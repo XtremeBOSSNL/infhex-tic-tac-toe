@@ -10,6 +10,7 @@ const DEFAULT_SCALE = 42
 const SQRT_THREE = Math.sqrt(3)
 const GRID_LINE_COLOR = 'rgba(148, 163, 184, 0.18)'
 const ORIGIN_LINE_COLOR = 'rgba(125, 211, 252, 0.55)'
+const DRAG_THRESHOLD_PX = 6
 
 interface ViewState {
   offsetX: number
@@ -23,6 +24,13 @@ interface DragState {
   originOffsetX: number
   originOffsetY: number
   moved: boolean
+}
+
+interface PinchState {
+  startDistance: number
+  startScale: number
+  anchorUnitX: number
+  anchorUnitY: number
 }
 
 interface HexCell {
@@ -147,6 +155,39 @@ function formatCountdown(milliseconds: number | null): string {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`
 }
 
+function clampScale(scale: number): number {
+  return Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale))
+}
+
+function getTouchDistance(touches: TouchList): number {
+  if (touches.length < 2) {
+    return 0
+  }
+
+  const [firstTouch, secondTouch] = [touches[0], touches[1]]
+  const deltaX = firstTouch.clientX - secondTouch.clientX
+  const deltaY = firstTouch.clientY - secondTouch.clientY
+  return Math.hypot(deltaX, deltaY)
+}
+
+function getTouchCenter(touches: TouchList) {
+  if (touches.length === 0) {
+    return null
+  }
+
+  if (touches.length === 1) {
+    return {
+      x: touches[0].clientX,
+      y: touches[0].clientY
+    }
+  }
+
+  return {
+    x: (touches[0].clientX + touches[1].clientX) / 2,
+    y: (touches[0].clientY + touches[1].clientY) / 2
+  }
+}
+
 function GameScreen({
   players,
   isHost,
@@ -159,6 +200,7 @@ function GameScreen({
 }: Readonly<GameScreenProps>) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const dragStateRef = useRef<DragState | null>(null)
+  const pinchStateRef = useRef<PinchState | null>(null)
   const viewRef = useRef<ViewState>({ offsetX: 0, offsetY: 0, scale: DEFAULT_SCALE })
   const hoveredCellRef = useRef<HexCell | null>(null)
   const animationFrameRef = useRef<number | null>(null)
@@ -362,6 +404,41 @@ function GameScreen({
     return pixelToAxial(localX / viewRef.current.scale, localY / viewRef.current.scale)
   }
 
+  const applyZoomAtClientPoint = (clientX: number, clientY: number, nextScale: number) => {
+    const canvas = canvasRef.current
+    if (!canvas) {
+      return
+    }
+
+    const rect = canvas.getBoundingClientRect()
+    const safeScale = clampScale(nextScale)
+    const anchorUnitX = (clientX - rect.left - rect.width / 2 - viewRef.current.offsetX) / viewRef.current.scale
+    const anchorUnitY = (clientY - rect.top - rect.height / 2 - viewRef.current.offsetY) / viewRef.current.scale
+
+    viewRef.current = {
+      scale: safeScale,
+      offsetX: clientX - rect.left - rect.width / 2 - anchorUnitX * safeScale,
+      offsetY: clientY - rect.top - rect.height / 2 - anchorUnitY * safeScale
+    }
+  }
+
+  const tryPlaceCellAtClientPoint = (clientX: number, clientY: number) => {
+    const targetCell = screenToCell(clientX, clientY)
+    if (!targetCell) {
+      return
+    }
+
+    const cellKey = getCellKey(targetCell.x, targetCell.y)
+    if (isOwnTurn && renderableCellSet.has(cellKey) && !cellMap.has(cellKey)) {
+      onPlaceCell(targetCell.x, targetCell.y)
+    }
+  }
+
+  const clearInteractionState = () => {
+    dragStateRef.current = null
+    pinchStateRef.current = null
+  }
+
   useEffect(() => {
     scheduleDraw()
   }, [boardState, renderableCells, renderableCellSet, cellMap])
@@ -405,10 +482,10 @@ function GameScreen({
   }, [])
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-slate-950 text-white">
+    <div className="relative h-dvh w-screen overflow-hidden bg-slate-950 text-white">
       <canvas
         ref={canvasRef}
-        className={`absolute inset-0 h-full w-full ${interactionEnabled
+        className={`absolute inset-0 h-full w-full touch-none select-none ${interactionEnabled
           ? (isOwnTurn ? 'cursor-grab active:cursor-grabbing' : 'cursor-not-allowed')
           : 'cursor-default'
           }`}
@@ -443,7 +520,7 @@ function GameScreen({
 
           const deltaX = event.clientX - dragState.startX
           const deltaY = event.clientY - dragState.startY
-          if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) {
+          if (Math.abs(deltaX) > DRAG_THRESHOLD_PX || Math.abs(deltaY) > DRAG_THRESHOLD_PX) {
             dragState.moved = true
           }
 
@@ -482,32 +559,161 @@ function GameScreen({
             return
           }
 
-          const cellKey = getCellKey(targetCell.x, targetCell.y)
-          if (isOwnTurn && renderableCellSet.has(cellKey) && !cellMap.has(cellKey)) {
-            onPlaceCell(targetCell.x, targetCell.y)
-          }
+          tryPlaceCellAtClientPoint(event.clientX, event.clientY)
         }}
         onWheel={(event) => {
           if (!interactionEnabled) {
             return
           }
 
+          const zoomFactor = event.deltaY > 0 ? 0.92 : 1.08
+          applyZoomAtClientPoint(event.clientX, event.clientY, viewRef.current.scale * zoomFactor)
+          scheduleDraw()
+        }}
+        onTouchStart={(event) => {
+          if (!interactionEnabled) {
+            return
+          }
+
+          if (event.touches.length === 1) {
+            const touch = event.touches[0]
+            hoveredCellRef.current = screenToCell(touch.clientX, touch.clientY)
+            dragStateRef.current = {
+              startX: touch.clientX,
+              startY: touch.clientY,
+              originOffsetX: viewRef.current.offsetX,
+              originOffsetY: viewRef.current.offsetY,
+              moved: true
+            }
+            pinchStateRef.current = null
+            scheduleDraw()
+            return
+          }
+
           const canvas = canvasRef.current
-          if (!canvas) return
+          const center = getTouchCenter(event.touches)
+          const distance = getTouchDistance(event.touches)
+          if (!canvas || !center || distance === 0) {
+            return
+          }
 
           const rect = canvas.getBoundingClientRect()
-          const pointerX = event.clientX - rect.left
-          const pointerY = event.clientY - rect.top
-          const anchorUnitX = (pointerX - rect.width / 2 - viewRef.current.offsetX) / viewRef.current.scale
-          const anchorUnitY = (pointerY - rect.height / 2 - viewRef.current.offsetY) / viewRef.current.scale
-          const zoomFactor = event.deltaY > 0 ? 0.92 : 1.08
-          const nextScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, viewRef.current.scale * zoomFactor))
-
-          viewRef.current = {
-            scale: nextScale,
-            offsetX: pointerX - rect.width / 2 - anchorUnitX * nextScale,
-            offsetY: pointerY - rect.height / 2 - anchorUnitY * nextScale
+          pinchStateRef.current = {
+            startDistance: distance,
+            startScale: viewRef.current.scale,
+            anchorUnitX: (center.x - rect.left - rect.width / 2 - viewRef.current.offsetX) / viewRef.current.scale,
+            anchorUnitY: (center.y - rect.top - rect.height / 2 - viewRef.current.offsetY) / viewRef.current.scale
           }
+          dragStateRef.current = null
+          hoveredCellRef.current = null
+          scheduleDraw()
+        }}
+        onTouchMove={(event) => {
+          if (!interactionEnabled) {
+            return
+          }
+
+          if (event.touches.length >= 2) {
+            const pinchState = pinchStateRef.current
+            const canvas = canvasRef.current
+            const center = getTouchCenter(event.touches)
+            const distance = getTouchDistance(event.touches)
+            if (!pinchState || !canvas || !center || distance === 0) {
+              return
+            }
+
+            const rect = canvas.getBoundingClientRect()
+            const nextScale = clampScale(pinchState.startScale * (distance / pinchState.startDistance))
+            viewRef.current = {
+              scale: nextScale,
+              offsetX: center.x - rect.left - rect.width / 2 - pinchState.anchorUnitX * nextScale,
+              offsetY: center.y - rect.top - rect.height / 2 - pinchState.anchorUnitY * nextScale
+            }
+            hoveredCellRef.current = null
+            scheduleDraw()
+            return
+          }
+
+          const dragState = dragStateRef.current
+          const touch = event.touches[0]
+          if (!dragState || !touch) {
+            return
+          }
+
+          const nextCell = screenToCell(touch.clientX, touch.clientY)
+          if (!sameCell(hoveredCellRef.current, nextCell)) {
+            hoveredCellRef.current = nextCell
+          }
+
+          const deltaX = touch.clientX - dragState.startX
+          const deltaY = touch.clientY - dragState.startY
+          if (Math.abs(deltaX) > DRAG_THRESHOLD_PX || Math.abs(deltaY) > DRAG_THRESHOLD_PX) {
+            dragState.moved = true
+          }
+
+          if (dragState.moved) {
+            viewRef.current = {
+              ...viewRef.current,
+              offsetX: dragState.originOffsetX + deltaX,
+              offsetY: dragState.originOffsetY + deltaY
+            }
+          }
+
+          scheduleDraw()
+        }}
+        onTouchEnd={(event) => {
+          if (!interactionEnabled) {
+            return
+          }
+
+          if (event.touches.length >= 2) {
+            const canvas = canvasRef.current
+            const center = getTouchCenter(event.touches)
+            const distance = getTouchDistance(event.touches)
+            if (!canvas || !center || distance === 0) {
+              clearInteractionState()
+              return
+            }
+
+            const rect = canvas.getBoundingClientRect()
+            pinchStateRef.current = {
+              startDistance: distance,
+              startScale: viewRef.current.scale,
+              anchorUnitX: (center.x - rect.left - rect.width / 2 - viewRef.current.offsetX) / viewRef.current.scale,
+              anchorUnitY: (center.y - rect.top - rect.height / 2 - viewRef.current.offsetY) / viewRef.current.scale
+            }
+            dragStateRef.current = null
+            return
+          }
+
+          if (event.touches.length === 1) {
+            const touch = event.touches[0]
+            hoveredCellRef.current = screenToCell(touch.clientX, touch.clientY)
+            dragStateRef.current = {
+              startX: touch.clientX,
+              startY: touch.clientY,
+              originOffsetX: viewRef.current.offsetX,
+              originOffsetY: viewRef.current.offsetY,
+              moved: false
+            }
+            pinchStateRef.current = null
+            scheduleDraw()
+            return
+          }
+
+          const dragState = dragStateRef.current
+          const lastTouch = event.changedTouches[0]
+          if (dragState && !dragState.moved && lastTouch) {
+            tryPlaceCellAtClientPoint(lastTouch.clientX, lastTouch.clientY)
+          }
+
+          hoveredCellRef.current = null
+          clearInteractionState()
+          scheduleDraw()
+        }}
+        onTouchCancel={() => {
+          hoveredCellRef.current = null
+          clearInteractionState()
           scheduleDraw()
         }}
       />
@@ -515,8 +721,8 @@ function GameScreen({
       <div className="pointer-events-none absolute inset-0">
         <div className="flex h-full flex-col justify-between gap-4">
           {interactionEnabled && (
-            <div className="flex justify-center absolute top-3 left-0 right-0">
-              <div className="pointer-events-none shadow-xxl w-full max-w-md rounded-md bg-slate-800 px-4 py-3">
+            <div className="absolute left-3 right-3 top-3 flex justify-center md:left-0 md:right-0">
+              <div className="pointer-events-none shadow-xxl w-full max-w-md rounded-md bg-slate-800/95 px-4 py-3">
                 <div className="flex items-center gap-3">
                   <span className={`h-2.5 w-2.5 rounded-full ${isOwnTurn ? 'bg-emerald-500' : 'bg-slate-400'}`} />
                   <div className="min-w-0 flex-1 spacing">
@@ -554,34 +760,53 @@ function GameScreen({
           )}
 
           {interactionEnabled && (
-            <div className="pointer-events-auto flex flex-wrap bottom-2 right-2 absolute gap-2">
+            <div className="pointer-events-auto z-10 absolute bottom-3 left-3 right-3 flex flex-wrap justify-end gap-2 md:left-auto md:right-3">
+              <button
+                onClick={onLeave}
+                className="min-w-[9rem] flex-1 rounded-full bg-red-500 px-4 py-2 font-medium shadow-lg hover:bg-red-400 md:flex-none"
+              >
+                Leave Game
+              </button>
               <button
                 onClick={() => {
                   viewRef.current = { offsetX: 0, offsetY: 0, scale: DEFAULT_SCALE }
                   scheduleDraw()
                 }}
-                className="rounded-full bg-sky-600 w-40 px-4 py-2 font-medium shadow-lg hover:bg-sky-500"
+                className="min-w-[9rem] flex-1 rounded-full bg-sky-600 px-4 py-2 font-medium shadow-lg hover:bg-sky-500 md:flex-none"
               >
                 Reset View
-              </button>
-              <button
-                onClick={onLeave}
-                className="rounded-full bg-red-500 w-40 px-4 py-2 font-medium shadow-lg hover:bg-red-400"
-              >
-                Leave Game
               </button>
             </div>
           )}
 
           {interactionEnabled && (
-            <div className="pointer-events-auto w-full max-w-sm rounded-[1.5rem] bg-slate-950/28 px-4 py-4 text-right shadow-[0_12px_45px_rgba(15,23,42,0.22)] absolute top-0 right-0 backdrop-blur-md">
+            <div className="
+            pointer-events-auto absolute w-auto md:rounded-tr-[1.5rem] 
+            bg-slate-800 px-4 py-4 text-left 
+            shadow-[0_12px_45px_rgba(15,23,42,0.22)] backdrop-blur-md 
+            left-0
+            right-0
+            bottom-0
+            pb-20
+
+            md:left-0 md:w-full md:max-w-sm
+            ">
               <div className="text-sm uppercase tracking-[0.25em] text-sky-300">Live Match</div>
               <h1 className="mt-1 text-2xl font-bold">Infinite Hex Tik-Tak-Toe</h1>
-              <div className="text-slate-300">Connect 5 hexagons in a row</div>
-              <div className="mt-4 space-y-3 text-sm">
-                <div className="border-r border-white/18 pr-3">
+              <div className="mt-2 text-sm text-slate-300">
+                Connect 5 hexagons in a row.<br />
+                Tap to place, drag to pan, pinch to zoom.
+              </div>
+              <div className="mt-4 text-sm grid grid-cols-2 md:grid-cols-1 gap-4">
+                <div className="border-l border-white/18 pl-3">
+                  <div className="text-[11px] uppercase tracking-[0.28em] text-slate-400">Cells</div>
+                  <div className="mt-1 text-white">{renderableCells.length} active</div>
+                  <div className="text-slate-300">{boardState.cells.length} occupied</div>
+                </div>
+
+                <div className="border-l border-white/18 pl-3">
                   <div className="text-[11px] uppercase tracking-[0.28em] text-slate-400">Your Color</div>
-                  <div className="mt-1 flex items-center justify-end gap-2.5 text-white">
+                  <div className="mt-1 flex items-center gap-2.5 text-white">
                     <span>{ownColor}</span>
                     <span
                       className="h-3.5 w-3.5 rounded-full border border-white/20"
@@ -590,35 +815,31 @@ function GameScreen({
                   </div>
                 </div>
 
-                <div className="border-r border-white/18 pr-3">
-                  <div className="text-[11px] uppercase tracking-[0.28em] text-slate-400">Cells</div>
-                  <div className="mt-1 text-white">{renderableCells.length} active</div>
-                  <div className="text-slate-300">{boardState.cells.length} occupied</div>
-                </div>
-
-                <div className="border-r border-white/18 pr-3">
-                  <div className="text-[11px] uppercase tracking-[0.28em] text-slate-400">Hovered Cell</div>
+                {/* <div className="border-l border-white/18 pl-3">
+                  <div className="text-[11px] uppercase tracking-[0.28em] text-slate-400">Target Cell</div>
                   <div className="mt-1 text-white">
-                    {hudState.hoveredCell ? `(${hudState.hoveredCell.x}, ${hudState.hoveredCell.y})` : 'Move over the board'}
+                    {hudState.hoveredCell ? `(${hudState.hoveredCell.x}, ${hudState.hoveredCell.y})` : 'Tap or hover over the board'}
                   </div>
-                </div>
+                </div> */}
 
-                <div className="border-r border-white/18 pr-3">
+                {/* <div className="border-l border-white/18 pl-3">
                   <div className="text-[11px] uppercase tracking-[0.28em] text-slate-400">Zoom Level</div>
                   <div className="mt-1 text-white">{Math.round((hudState.scale / DEFAULT_SCALE) * 100)}%</div>
-                </div>
+                </div> */}
               </div>
             </div>
           )}
         </div>
       </div>
 
-      {overlay && (
-        <div className="absolute inset-0">
-          {overlay}
-        </div>
-      )}
-    </div>
+      {
+        overlay && (
+          <div className="absolute inset-0">
+            {overlay}
+          </div>
+        )
+      }
+    </div >
   )
 }
 
