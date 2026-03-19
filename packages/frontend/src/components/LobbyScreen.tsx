@@ -1,4 +1,5 @@
 import type { SessionInfo } from '@ih3t/shared'
+import ScreenFooter from './ScreenFooter'
 
 interface LobbyScreenProps {
   isConnected: boolean
@@ -110,10 +111,7 @@ function LobbyScreen({
           </section>
         </div>
 
-        <footer className="mt-10 text-center text-xs uppercase tracking-[0.22em] text-slate-400">
-          <div>Made with love by WolverinDEV</div>
-          <div className="mt-2">Copyright © {new Date().getFullYear()}</div>
-        </footer>
+        <ScreenFooter />
       </div>
     </div>
   )
