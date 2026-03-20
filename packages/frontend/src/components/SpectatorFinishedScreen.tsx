@@ -1,14 +1,17 @@
+import type { MouseEvent } from 'react'
 import type { SessionFinishReason } from '@ih3t/shared'
 
 interface SpectatorFinishedScreenProps {
   reason: SessionFinishReason | null
   onReturnToLobby: () => void
-  onReviewGame?: () => void
+  reviewGameHref?: string
+  onReviewGame?: (event: MouseEvent<HTMLAnchorElement>) => void
 }
 
 function SpectatorFinishedScreen({
   reason,
   onReturnToLobby,
+  reviewGameHref,
   onReviewGame
 }: Readonly<SpectatorFinishedScreenProps>) {
   const message = reason === 'timeout'
@@ -25,13 +28,14 @@ function SpectatorFinishedScreen({
         <h1 className="text-6xl mb-4">Match finished</h1>
         <p className="text-xl">{message}</p>
         <div className="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row">
-          {onReviewGame && (
-            <button
+          {reviewGameHref && (
+            <a
+              href={reviewGameHref}
               onClick={onReviewGame}
-              className="min-w-48 rounded bg-sky-950/60 px-6 py-3 text-white ring-1 ring-inset ring-sky-200/30 transition hover:bg-sky-950/80"
+              className="inline-flex min-w-48 items-center justify-center rounded bg-sky-950/60 px-6 py-3 text-white ring-1 ring-inset ring-sky-200/30 transition hover:bg-sky-950/80"
             >
               Review Game
-            </button>
+            </a>
           )}
           <button
             onClick={onReturnToLobby}

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import type { MouseEvent } from 'react'
 import type { CreateSessionRequest } from '@ih3t/shared'
 import { ToastContainer, toast } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
@@ -98,6 +99,24 @@ function buildRoutePath(route: AppRoute) {
   return '/'
 }
 
+function isPlainLeftClick(event: MouseEvent<HTMLAnchorElement>) {
+  return event.button === 0
+    && !event.defaultPrevented
+    && !event.metaKey
+    && !event.altKey
+    && !event.ctrlKey
+    && !event.shiftKey
+}
+
+function createFinishedGameReviewRoute(gameId: string): AppRoute {
+  return {
+    page: 'finished-game',
+    gameId,
+    archivePage: 1,
+    archiveBaseTimestamp: Date.now()
+  }
+}
+
 function App() {
   const [route, setRoute] = useState<AppRoute>(() => parseRoute(window.location.pathname, window.location.search))
   const connection = useLiveGameStore(state => state.connection)
@@ -166,9 +185,14 @@ function App() {
     navigateTo({ page: 'live' })
   }
 
-  const openFinishedGameReview = (gameId: string) => {
+  const handleFinishedGameReviewClick = (event: MouseEvent<HTMLAnchorElement>, route: AppRoute) => {
+    if (!isPlainLeftClick(event)) {
+      return
+    }
+
+    event.preventDefault()
     returnToLobby()
-    navigateTo({ page: 'finished-game', gameId, archivePage: 1, archiveBaseTimestamp: Date.now() })
+    navigateTo(route)
   }
 
   useEffect(() => {
@@ -272,6 +296,7 @@ function App() {
     )
   } else if (liveScreen.kind === 'finished-player') {
     const finishedGameId = liveScreen.finishedGameId
+    const finishedGameReviewRoute = finishedGameId ? createFinishedGameReviewRoute(finishedGameId) : null
     const isRematchRequestedByCurrentPlayer = liveScreen.rematch.requestedPlayerIds.includes(connection.currentPlayerId)
     const isRematchRequestedByOpponent = liveScreen.rematch.requestedPlayerIds.some(
       playerId => playerId !== connection.currentPlayerId
@@ -293,7 +318,8 @@ function App() {
             <WinnerScreen
               reason={liveScreen.finishReason}
               onReturnToLobby={navigateToLiveLobby}
-              onReviewGame={finishedGameId ? () => openFinishedGameReview(finishedGameId) : undefined}
+              reviewGameHref={finishedGameReviewRoute ? buildRoutePath(finishedGameReviewRoute) : undefined}
+              onReviewGame={finishedGameReviewRoute ? (event) => handleFinishedGameReviewClick(event, finishedGameReviewRoute) : undefined}
               onRequestRematch={liveScreen.rematch.showAction ? requestRematch : undefined}
               isRematchAvailable={liveScreen.rematch.canRematch}
               isRematchRequestedByCurrentPlayer={isRematchRequestedByCurrentPlayer}
@@ -304,7 +330,8 @@ function App() {
             <LoserScreen
               reason={liveScreen.finishReason}
               onReturnToLobby={navigateToLiveLobby}
-              onReviewGame={finishedGameId ? () => openFinishedGameReview(finishedGameId) : undefined}
+              reviewGameHref={finishedGameReviewRoute ? buildRoutePath(finishedGameReviewRoute) : undefined}
+              onReviewGame={finishedGameReviewRoute ? (event) => handleFinishedGameReviewClick(event, finishedGameReviewRoute) : undefined}
               onRequestRematch={liveScreen.rematch.showAction ? requestRematch : undefined}
               isRematchAvailable={liveScreen.rematch.canRematch}
               isRematchRequestedByCurrentPlayer={isRematchRequestedByCurrentPlayer}
@@ -315,6 +342,7 @@ function App() {
     )
   } else {
     const finishedGameId = liveScreen.finishedGameId
+    const finishedGameReviewRoute = finishedGameId ? createFinishedGameReviewRoute(finishedGameId) : null
     screen = (
       <GameScreen
         sessionId={liveScreen.sessionId}
@@ -330,7 +358,8 @@ function App() {
           <SpectatorFinishedScreen
             reason={liveScreen.finishReason}
             onReturnToLobby={navigateToLiveLobby}
-            onReviewGame={finishedGameId ? () => openFinishedGameReview(finishedGameId) : undefined}
+            reviewGameHref={finishedGameReviewRoute ? buildRoutePath(finishedGameReviewRoute) : undefined}
+            onReviewGame={finishedGameReviewRoute ? (event) => handleFinishedGameReviewClick(event, finishedGameReviewRoute) : undefined}
           />
         )}
       />

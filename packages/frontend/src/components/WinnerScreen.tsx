@@ -1,10 +1,12 @@
+import type { MouseEvent } from 'react'
 import type { SessionFinishReason } from '@ih3t/shared'
 import FinishedPlayerScreen from './FinishedPlayerScreen'
 
 interface WinnerScreenProps {
   reason: SessionFinishReason | null
   onReturnToLobby: () => void
-  onReviewGame?: () => void
+  reviewGameHref?: string
+  onReviewGame?: (event: MouseEvent<HTMLAnchorElement>) => void
   onRequestRematch?: () => void
   isRematchAvailable?: boolean
   isRematchRequestedByCurrentPlayer?: boolean
@@ -14,6 +16,7 @@ interface WinnerScreenProps {
 function WinnerScreen({
   reason,
   onReturnToLobby,
+  reviewGameHref,
   onReviewGame,
   onRequestRematch,
   isRematchAvailable = true,
@@ -35,6 +38,7 @@ function WinnerScreen({
       message={message}
       reason={reason}
       onReturnToLobby={onReturnToLobby}
+      reviewGameHref={reviewGameHref}
       onReviewGame={onReviewGame}
       onRequestRematch={onRequestRematch}
       isRematchAvailable={isRematchAvailable}
