@@ -405,7 +405,7 @@ function SessionRoute() {
       />
     )
   }
-  
+
   return (
     <SessionConnectingScreen
       sessionId={sessionId}

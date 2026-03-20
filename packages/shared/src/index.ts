@@ -12,6 +12,16 @@ export type SessionState = z.infer<typeof zSessionState>;
 export const zSessionParticipantRole = z.enum(['player', 'spectator']);
 export type SessionParticipantRole = z.infer<typeof zSessionParticipantRole>;
 
+export const zParticipantConnection = z.discriminatedUnion('status', [
+    z.object({
+        status: z.literal('connected')
+    }),
+    z.object({
+        status: z.literal('orphaned')
+    })
+]);
+export type ParticipantConnection = z.infer<typeof zParticipantConnection>;
+
 export const zCellOccupant = z.string().brand<'CellOccupant'>();
 export type CellOccupant = z.infer<typeof zCellOccupant>;
 
@@ -85,7 +95,8 @@ export type BoardState = GameBoard;
 export const zSessionParticipant = z.object({
     id: zIdentifier,
     displayName: z.string(),
-    profileId: zIdentifier.nullable()
+    profileId: zIdentifier.nullable(),
+    connection: zParticipantConnection
 });
 export type SessionParticipant = z.infer<typeof zSessionParticipant>;
 

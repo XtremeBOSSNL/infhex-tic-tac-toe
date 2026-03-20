@@ -3,6 +3,7 @@ import type {
     GameBoard,
     GameMove,
     LobbyOptions,
+    ParticipantConnection,
     SessionFinishReason,
     SessionInfo,
     SessionParticipant,
@@ -12,10 +13,24 @@ import type {
 import type { RequestClientInfo, SocketClientInfo } from '../network/clientInfo';
 import type { AccountUserProfile } from '../auth/authRepository';
 
-export interface StoredGameSession {
+export type ServerParticipantConnection = ParticipantConnection & ({
+    status: 'connected';
+    socketId: string;
+} | {
+    status: 'orphaned';
+    timeout: ReturnType<typeof setTimeout>;
+});
+
+export interface ServerSessionParticipant extends SessionParticipant {
+    deviceId: string
+
+    connection: ServerParticipantConnection
+}
+
+export interface ServerGameSession {
     id: string;
-    players: SessionParticipant[];
-    spectators: SessionParticipant[];
+    players: ServerSessionParticipant[];
+    spectators: ServerSessionParticipant[];
     gameOptions: LobbyOptions;
     state: 'lobby' | 'in-game' | 'finished';
     createdAt: number;
@@ -38,15 +53,14 @@ export interface PublicGameStatePayload {
 
 export interface JoinSessionParams {
     sessionId: string;
-    participantId?: string | null;
+    socketId: string;
     client: SocketClientInfo;
     user: AccountUserProfile;
 }
 
 export interface JoinSessionResult {
-    sessionId: string;
     participantId: string;
-    role: SessionParticipantRole;
+    participantRole: SessionParticipantRole;
     session: SessionInfo;
     isNewParticipant: boolean;
     gameState?: PublicGameStatePayload;
@@ -102,12 +116,34 @@ export function cloneGameOptions(gameOptions: LobbyOptions): LobbyOptions {
     };
 }
 
-export function cloneSessionParticipant(participant: SessionParticipant): SessionParticipant {
-    return { ...participant };
+export function toPublicParticipantConnection(connection: ServerParticipantConnection): ParticipantConnection {
+    return {
+        status: connection.status
+    };
 }
 
-export function cloneParticipants(participants: SessionParticipant[]): SessionParticipant[] {
+export function cloneSessionParticipant(participant: ServerSessionParticipant): SessionParticipant {
+    return {
+        id: participant.id,
+        displayName: participant.displayName,
+        profileId: participant.profileId,
+        connection: toPublicParticipantConnection(participant.connection)
+    };
+}
+
+export function cloneParticipants(participants: ServerSessionParticipant[]): SessionParticipant[] {
     return participants.map((participant) => cloneSessionParticipant(participant));
+}
+
+export function cloneStoredSessionParticipant(participant: ServerSessionParticipant): ServerSessionParticipant {
+    return {
+        ...participant,
+        connection: { ...participant.connection }
+    };
+}
+
+export function cloneStoredParticipants(participants: ServerSessionParticipant[]): ServerSessionParticipant[] {
+    return participants.map((participant) => cloneStoredSessionParticipant(participant));
 }
 
 export function cloneGameBoard(boardState: GameBoard): GameBoard {
@@ -118,18 +154,17 @@ export function cloneGameBoard(boardState: GameBoard): GameBoard {
     };
 }
 
-export function createStoredGameSession(
+export function createGameSession(
     sessionId: string,
     gameOptions: LobbyOptions,
-    createdAt = Date.now()
-): StoredGameSession {
+): ServerGameSession {
     return {
         id: sessionId,
         players: [],
         spectators: [],
         gameOptions: cloneGameOptions(gameOptions),
         state: 'lobby',
-        createdAt,
+        createdAt: Date.now(),
         startedAt: null,
         currentGameId: randomUUID(),
         moveHistory: [],
@@ -143,13 +178,5 @@ export function createStoredGameSession(
         finishReason: null,
         winningPlayerId: null,
         rematchAcceptedPlayerIds: []
-    };
-}
-
-export function buildSessionParticipant(participantId: string, user: AccountUserProfile): SessionParticipant {
-    return {
-        id: participantId,
-        displayName: user.username,
-        profileId: user.id.startsWith('guest:') ? null : user.id
     };
 }

@@ -5,7 +5,6 @@ import type { Logger } from 'pino';
 import { inject, injectable } from 'tsyringe';
 import {
     type ClientToServerEvents,
-    type JoinSessionRequest,
     type ServerToClientEvents,
     zJoinSessionRequest,
     zPlaceCellRequest,
@@ -25,25 +24,15 @@ import type {
     SessionUpdatedEvent,
 } from '../session/types';
 
-const zSocketJoinSessionRequest = z.union([z.string().trim().min(1), zJoinSessionRequest])
-    .transform((request: string | JoinSessionRequest): JoinSessionRequest => typeof request === 'string' ? { sessionId: request } : request);
-
 type Participation = {
     sessionId: string,
     participantId: string,
-};
-
-type OrphanedParticipation = {
-    deviceId: string,
-    participation: Participation,
-    timeout: ReturnType<typeof setTimeout>,
 };
 
 @injectable()
 export class SocketServerGateway {
     private readonly logger: Logger;
     private readonly socketParticipations = new Map<string, Participation>();
-    private readonly orphanedParticipations = new Map<string, OrphanedParticipation>();
     private io?: Server<ClientToServerEvents, ServerToClientEvents>;
 
     constructor(
@@ -84,22 +73,30 @@ export class SocketServerGateway {
 
         io.on('connection', (socket) => {
             const clientInfo = getSocketClientInfo(socket);
-            const existingParticipantInfo = clientInfo.deviceId ? this.orphanedParticipations.get(clientInfo.deviceId) : null;
-            if (existingParticipantInfo) {
-                clearTimeout(existingParticipantInfo.timeout);
-                this.orphanedParticipations.delete(existingParticipantInfo.deviceId);
 
-                const participation = existingParticipantInfo.participation;
-                void this.socketJoinSession(socket, participation.sessionId, participation.participantId).catch(error => {
-                    logSocketActionFailure(this.logger, 'rejoin-session', socket, error, { sessionId: participation.sessionId });
-                    socket.emit('error', getSocketErrorMessage(error));
+            const reclaimedSession = this.sessionManager.reclaimSessionFromDeviceId(clientInfo.deviceId ?? "", socket.id);
+            if (reclaimedSession) {
+                this.socketParticipations.set(socket.id, {
+                    sessionId: reclaimedSession.session.id,
+                    participantId: reclaimedSession.participantId
                 });
+
+                socket.join(reclaimedSession.session.id);
+                socket.emit('session-joined', {
+                    sessionId: reclaimedSession.session.id,
+                    session: reclaimedSession.session,
+                    participantId: reclaimedSession.participantId
+                });
+
+                if (reclaimedSession.gameState) {
+                    socket.emit('game-state', reclaimedSession.gameState);
+                }
             }
 
             this.logger.info({
                 event: 'socket.connected',
                 socketId: socket.id,
-                reconnect: Boolean(existingParticipantInfo),
+                reconnect: Boolean(reclaimedSession),
                 client: clientInfo
             }, 'Socket connected');
 
@@ -110,17 +107,15 @@ export class SocketServerGateway {
             socket.on('join-session', async (request) => {
                 let sessionId: string;
                 try {
-                    sessionId = zSocketJoinSessionRequest.parse(request).sessionId;
+                    sessionId = zJoinSessionRequest.parse(request).sessionId;
                 } catch {
                     socket.emit('error', 'Invalid session request.');
                     return;
                 }
 
                 try {
-                    const currentParticipation = this.socketParticipations.get(socket.id);
-                    const participantId = currentParticipation?.sessionId === sessionId ? currentParticipation.participantId : null;
-                    const joinResult = await this.socketJoinSession(socket, sessionId, participantId);
-                    if (joinResult.role === 'player' && joinResult.isNewParticipant) {
+                    const joinResult = await this.socketJoinSession(socket, sessionId);
+                    if (joinResult.participantRole === 'player' && joinResult.isNewParticipant) {
                         this.sessionManager.activateSession(sessionId);
                     }
 
@@ -128,7 +123,7 @@ export class SocketServerGateway {
                         event: 'socket.joined-session',
                         socketId: socket.id,
                         sessionId,
-                        role: joinResult.role,
+                        role: joinResult.participantRole,
                         state: joinResult.session.state,
                         isNewParticipant: joinResult.isNewParticipant
                     }, 'Socket joined session');
@@ -251,28 +246,8 @@ export class SocketServerGateway {
                     socketId: socket.id
                 }, 'Socket disconnected');
 
-                const participation = this.socketParticipations.get(socket.id);
                 this.socketParticipations.delete(socket.id);
-
-                if (!participation) {
-                    return;
-                }
-
-                const deviceId = clientInfo.deviceId;
-                if (deviceId && !this.orphanedParticipations.has(deviceId)) {
-                    this.orphanedParticipations.set(deviceId, {
-                        deviceId,
-                        participation,
-                        timeout: setTimeout(() => {
-                            this.orphanedParticipations.delete(deviceId);
-                            this.sessionManager.handleDisconnect(participation.participantId, true);
-                        }, 15_000)
-                    });
-
-                    this.sessionManager.handleDisconnect(participation.participantId, false);
-                } else {
-                    this.sessionManager.handleDisconnect(participation.participantId, true);
-                }
+                this.sessionManager.handleSocketDisconnect(socket.id);
             });
         });
 
@@ -282,7 +257,7 @@ export class SocketServerGateway {
     public getConnectionStatus() {
         return {
             connectedClientCount: this.socketParticipations.size,
-            reconnectingClientCount: this.orphanedParticipations.size
+            reconnectingClientCount: 0
         };
     }
 
@@ -341,23 +316,13 @@ export class SocketServerGateway {
     private async socketJoinSession(
         socket: Socket<ClientToServerEvents, ServerToClientEvents>,
         sessionId: string,
-        participantId: string | null,
     ): Promise<JoinSessionResult> {
         const user = await this.authService.getCurrentUserFromSocket(socket)
             ?? this.createGuestUser(socket);
 
-        const existingParticipation = this.socketParticipations.get(socket.id);
-        if (
-            existingParticipation
-            && this.sessionManager.getSessionInfo(existingParticipation.sessionId)
-            && !(existingParticipation.participantId === participantId && existingParticipation.sessionId === sessionId)
-        ) {
-            throw new SessionError('You are already in a session');
-        }
-
         const joinResult = this.sessionManager.joinSession({
             sessionId,
-            participantId,
+            socketId: socket.id,
             client: getSocketClientInfo(socket),
             user,
         });

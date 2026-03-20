@@ -49,7 +49,8 @@ function LobbyRoute() {
         return
       }
 
-      void navigate(buildSessionPath(sessionId))
+      /* join the game and the join method will update the screen to the lobby screen */
+      joinGame(sessionId)
     })()
   }
 

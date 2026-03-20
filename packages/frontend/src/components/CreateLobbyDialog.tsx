@@ -129,7 +129,6 @@ function CreateLobbyDialog({
         timeControl: selectedTimeControl
       }
     })
-    onClose()
   }
 
   return (

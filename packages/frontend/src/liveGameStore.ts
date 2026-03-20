@@ -44,7 +44,7 @@ interface LiveGameStoreState {
   setShutdownState: (shutdown: ShutdownState | null) => void
   startJoiningSession: (sessionId: string) => void
   failJoiningSession: (sessionId: string, errorMessage: string) => void
-  joinSession: (payload: SessionJoinedPayload) => void
+  setupSession: (payload: SessionJoinedPayload) => void
   updateSession: (payload: SessionUpdatedPayload) => void
   updateBoard: (payload: GameStatePayload) => void
   resetToLobby: () => void
@@ -165,7 +165,7 @@ export const useLiveGameStore = create<LiveGameStoreState>()(
           errorMessage
         }
       }),
-    joinSession: (payload) =>
+    setupSession: (payload) =>
       set((state) => {
         const session = cloneSessionInfo(payload.session)
         state.pendingSessionJoin = { status: 'idle', sessionId: null, errorMessage: null }

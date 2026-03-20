@@ -4,6 +4,7 @@ import type {
     PlayerProfileIds,
     SessionFinishReason,
     SessionInfo,
+    SessionParticipantRole,
     ShutdownState
 } from '@ih3t/shared';
 import type { Logger } from 'pino';
@@ -26,15 +27,18 @@ import type {
     RematchSessionResult,
     SessionManagerEventHandlers,
     SessionUpdatedEvent,
-    StoredGameSession,
+    ServerGameSession,
+    ServerSessionParticipant,
+    PublicGameStatePayload,
 } from './types';
 import {
-    buildSessionParticipant,
     cloneGameBoard,
     cloneGameOptions,
     cloneParticipants,
-    createStoredGameSession,
+    cloneStoredParticipants,
+    createGameSession,
 } from './types';
+import { randomUUID } from 'node:crypto';
 
 export class SessionError extends Error {
     constructor(message: string) {
@@ -65,7 +69,7 @@ type ShutdownTrigger = 'all-sessions-finished' | 'deadline-reached';
 export class SessionManager {
     private eventHandlers: SessionManagerEventHandlers = {};
     private readonly logger: Logger;
-    private readonly sessions = new Map<string, StoredGameSession>();
+    private readonly sessions = new Map<string, ServerGameSession>();
     private scheduledShutdown: ShutdownState | null = null;
     private scheduledShutdownTimer: ReturnType<typeof setTimeout> | null = null;
     private shutdownRequested = false;
@@ -169,7 +173,7 @@ export class SessionManager {
         }
 
         const sessionId = this.createSessionId();
-        const session = createStoredGameSession(sessionId, params.lobbyOptions);
+        const session = createGameSession(sessionId, params.lobbyOptions);
 
         this.sessions.set(session.id, session);
         this.emitSessionsUpdated();
@@ -186,33 +190,38 @@ export class SessionManager {
 
     joinSession(params: JoinSessionParams): JoinSessionResult {
         const session = this.requireSession(params.sessionId);
-
-        if (params.participantId) {
-            const existingRole = this.getExistingParticipantRole(session, params.participantId);
-            if (existingRole) {
-                this.refreshParticipant(session, params.participantId, params.user);
-                const sessionInfo = this.toSessionInfo(session);
-                return {
-                    sessionId: session.id,
-                    participantId: params.participantId,
-                    role: existingRole,
-                    session: sessionInfo,
-                    isNewParticipant: false,
-                    gameState: session.state !== 'lobby'
-                        ? this.simulation.getPublicGameState(session)
-                        : undefined
-                };
-            }
-        }
-
         if (session.state === 'finished') {
             throw new SessionError('Session has already finished');
         }
 
-        const participantId = params.participantId ?? this.createParticipantId(session);
-        const participant = buildSessionParticipant(participantId, params.user);
+        const existingParticipation = this.findParticipationFromSocketId(params.socketId);
+        if (existingParticipation?.session === session) {
+            return {
+                session: this.toSessionInfo(session),
 
-        let role: JoinSessionResult['role'];
+                participantId: existingParticipation.participationId,
+                participantRole: existingParticipation.participationRole,
+
+                isNewParticipant: false,
+
+                gameState: this.simulation.getPublicGameState(session),
+            }
+        } else if (existingParticipation) {
+            throw new SessionError('Socket already bound to a session');
+        }
+
+        const participant = {
+            id: this.createParticipantId(session),
+            displayName: params.user.username,
+            profileId: params.user.id.startsWith('guest:') ? null : params.user.id,
+            deviceId: params.client.deviceId ?? randomUUID(),
+            connection: {
+                status: 'connected',
+                socketId: params.socketId
+            }
+        } satisfies ServerSessionParticipant;
+
+        let role: JoinSessionResult['participantRole'];
         if (session.state === 'lobby') {
             if (session.players.length >= MAX_PLAYERS_PER_SESSION) {
                 throw new SessionError('Session is full');
@@ -245,12 +254,11 @@ export class SessionManager {
         this.eventHandlers.participantJoined?.(event);
 
         return {
-            sessionId: session.id,
-            participantId: participant.id,
-            role,
             session: sessionInfo,
+            participantId: participant.id,
+            participantRole: role,
             isNewParticipant: true,
-            gameState: role === 'spectator' ? this.simulation.getPublicGameState(session) : undefined
+            gameState: this.simulation.getPublicGameState(session)
         };
     }
 
@@ -293,21 +301,26 @@ export class SessionManager {
         this.finishSession(session, 'surrender', winningPlayerId);
     }
 
-    handleDisconnect(participantId: string, terminal: boolean): void {
-        for (const session of this.findSessionsByParticipant(participantId)) {
-            if (session.state === 'in-game' && !terminal) {
-                continue;
-            }
-
-            if (session.players.some((participant) => participant.id === participantId)) {
-                this.removePlayerFromSession(session, participantId, 'disconnect');
-                continue;
-            }
-
-            if (session.spectators.some((participant) => participant.id === participantId)) {
-                this.removeSpectatorFromSession(session, participantId, 'disconnect');
-            }
+    handleSocketDisconnect(socketId: string) {
+        const participation = this.findParticipationFromSocketId(socketId);
+        if (!participation) {
+            /* socket was not connected to any game */
+            return;
         }
+
+        if (participation.session.state !== "in-game" || !participation.participation.deviceId) {
+            this.removeParticipantFromSession(participation.session, participation.participationId, "disconnect")
+            return;
+        }
+
+        participation.participation.connection = {
+            status: "orphaned",
+            timeout: setTimeout(() => {
+                this.removeParticipantFromSession(participation.session, participation.participationId, "disconnect")
+            }, 15_000)
+        };
+
+        this.emitSessionUpdated(participation.session);
     }
 
     placeCell(sessionId: string, participantId: string, x: number, y: number): void {
@@ -390,11 +403,10 @@ export class SessionManager {
             throw new SessionError('Waiting for both players to request the rematch.');
         }
 
-        const nextSession = createStoredGameSession(finishedSessionId, session.gameOptions);
-        nextSession.players = cloneParticipants(session.players).reverse();
-        nextSession.spectators = session.spectators
-            .filter((spectator) => spectatorIds.includes(spectator.id))
-            .map((spectator) => ({ ...spectator }));
+        const nextSession = createGameSession(finishedSessionId, session.gameOptions);
+        nextSession.players = cloneStoredParticipants(session.players).reverse();
+        nextSession.spectators = cloneStoredParticipants(session.spectators)
+            .filter((spectator) => spectatorIds.includes(spectator.id));
 
         this.sessions.delete(session.id);
         this.sessions.set(nextSession.id, nextSession);
@@ -468,7 +480,7 @@ export class SessionManager {
         this.requestApplicationShutdown('deadline-reached');
     }
 
-    private reconcileLobbyState(session: StoredGameSession): void {
+    private reconcileLobbyState(session: ServerGameSession): void {
         if (session.players.length === 0) {
             this.logger.info({
                 event: 'session.terminated-empty',
@@ -508,7 +520,7 @@ export class SessionManager {
         }, 'Session started');
     }
 
-    private finishSession(session: StoredGameSession, reason: SessionFinishReason, winningPlayerId: string | null): void {
+    private finishSession(session: ServerGameSession, reason: SessionFinishReason, winningPlayerId: string | null): void {
         if (session.state === 'finished') {
             return;
         }
@@ -557,7 +569,20 @@ export class SessionManager {
         }, 'Session finished');
     }
 
-    private removePlayerFromSession(session: StoredGameSession, participantId: string, source: PlayerLeaveSource): void {
+    private removeParticipantFromSession(
+        session: ServerGameSession,
+        participantId: string,
+        source: PlayerLeaveSource
+    ): void {
+        if (session.players.some(player => player.id === participantId)) {
+            this.removePlayerFromSession(session, participantId, source)
+        } else if (session.spectators.some(spectator => spectator.id === participantId)) {
+            this.removeSpectatorFromSession(session, participantId, source)
+        }
+    }
+
+
+    private removePlayerFromSession(session: ServerGameSession, participantId: string, source: PlayerLeaveSource): void {
         session.players = session.players.filter((player) => player.id !== participantId);
 
         this.backgroundWorkers.track('game-left', {
@@ -595,7 +620,7 @@ export class SessionManager {
         this.reconcileLobbyState(session);
     }
 
-    private removeSpectatorFromSession(session: StoredGameSession, participantId: string, source: PlayerLeaveSource): void {
+    private removeSpectatorFromSession(session: ServerGameSession, participantId: string, source: PlayerLeaveSource): void {
         session.spectators = session.spectators.filter((spectator) => spectator.id !== participantId);
 
         this.backgroundWorkers.track('spectator-left', {
@@ -632,7 +657,7 @@ export class SessionManager {
         this.eventHandlers.shutdownUpdated?.(this.getShutdownState());
     }
 
-    private emitSessionUpdated(session: StoredGameSession): void {
+    private emitSessionUpdated(session: ServerGameSession): void {
         const event: SessionUpdatedEvent = {
             sessionId: session.id,
             session: this.toSessionInfo(session)
@@ -640,11 +665,11 @@ export class SessionManager {
         this.eventHandlers.sessionUpdated?.(event);
     }
 
-    private emitGameState(session: StoredGameSession): void {
+    private emitGameState(session: ServerGameSession): void {
         this.eventHandlers.gameStateUpdated?.(this.simulation.getPublicGameState(session));
     }
 
-    private requireSession(sessionId: string): StoredGameSession {
+    private requireSession(sessionId: string): ServerGameSession {
         const session = this.sessions.get(sessionId);
         if (!session) {
             throw new SessionError('Session not found');
@@ -653,26 +678,88 @@ export class SessionManager {
         return session;
     }
 
-    private getExistingParticipantRole(session: StoredGameSession, participantId: string): JoinSessionResult['role'] | null {
-        if (session.players.some((participant) => participant.id === participantId)) {
-            return 'player';
-        }
+    findParticipationFromSocketId(socketId: string): {
+        session: ServerGameSession,
+        participation: ServerSessionParticipant,
+        participationId: string,
+        participationRole: SessionParticipantRole,
+    } | null {
+        for (const session of this.sessions.values()) {
+            const player = session.players.find(player => player.connection.status === "connected" && player.connection.socketId === socketId);
+            if (player) {
+                return {
+                    session,
+                    participation: player,
+                    participationRole: "player",
+                    participationId: player.id
+                };
+            }
 
-        if (session.spectators.some((participant) => participant.id === participantId)) {
-            return 'spectator';
+            const spectator = session.players.find(spectator => spectator.connection.status === "connected" && spectator.connection.socketId === socketId);
+            if (spectator) {
+                return {
+                    session,
+                    participation: spectator,
+                    participationRole: "spectator",
+                    participationId: spectator.id
+                };
+            }
         }
 
         return null;
     }
 
-    private refreshParticipant(session: StoredGameSession, participantId: string, user: JoinSessionParams['user']): void {
-        const nextParticipant = buildSessionParticipant(participantId, user);
-        session.players = session.players.map((participant) =>
-            participant.id === participantId ? nextParticipant : participant
-        );
-        session.spectators = session.spectators.map((participant) =>
-            participant.id === participantId ? nextParticipant : participant
-        );
+
+
+    private findOrphanedParticipation(deviceId: string): {
+        session: ServerGameSession,
+        participant: ServerSessionParticipant,
+        participantRole: SessionParticipantRole,
+        participantId: string
+    } | null {
+        for (const session of this.sessions.values()) {
+            const player = session.players.find(player => player.connection.status === "orphaned" && player.deviceId === deviceId);
+            if (player) {
+                return {
+                    session,
+                    participant: player,
+                    participantRole: "player",
+                    participantId: player.id
+                }
+            }
+
+            const spectator = session.spectators.find(spectator => spectator.connection.status === "orphaned" && spectator.deviceId === deviceId);
+            if (spectator) {
+                return {
+                    session,
+                    participant: spectator,
+                    participantRole: "spectator",
+                    participantId: spectator.id
+                }
+            }
+        }
+
+        return null;
+    }
+
+    reclaimSessionFromDeviceId(deviceId: string, socketId: string): { session: SessionInfo, gameState: PublicGameStatePayload, participantId: string } | null {
+        const info = this.findOrphanedParticipation(deviceId);
+        if (!info) {
+            return null;
+        }
+
+        info.participant.connection = {
+            status: "connected",
+            socketId
+        };
+
+        this.emitSessionUpdated(info.session);
+
+        return {
+            session: this.toSessionInfo(info.session),
+            gameState: this.simulation.getPublicGameState(info.session),
+            participantId: info.participantId
+        }
     }
 
     private createSessionId(): string {
@@ -684,7 +771,7 @@ export class SessionManager {
         return sessionId;
     }
 
-    private createParticipantId(session: StoredGameSession): string {
+    private createParticipantId(session: ServerGameSession): string {
         let participantId = Math.random().toString(36).substring(2, 8);
         while (
             session.players.some((participant) => participant.id === participantId)
@@ -696,7 +783,7 @@ export class SessionManager {
         return participantId;
     }
 
-    private toSessionInfo(session: StoredGameSession): SessionInfo {
+    private toSessionInfo(session: ServerGameSession): SessionInfo {
         const base = {
             id: session.id,
             players: cloneParticipants(session.players),
@@ -731,7 +818,7 @@ export class SessionManager {
         }
     }
 
-    private buildPlayerNames(session: StoredGameSession): PlayerNames {
+    private buildPlayerNames(session: ServerGameSession): PlayerNames {
         const playerNames: PlayerNames = {};
 
         for (const [playerIndex, player] of session.players.entries()) {
@@ -741,7 +828,7 @@ export class SessionManager {
         return playerNames;
     }
 
-    private buildPlayerProfileIds(session: StoredGameSession): PlayerProfileIds {
+    private buildPlayerProfileIds(session: ServerGameSession): PlayerProfileIds {
         const playerProfileIds: PlayerProfileIds = {};
 
         for (const player of session.players) {
@@ -751,7 +838,7 @@ export class SessionManager {
         return playerProfileIds;
     }
 
-    private getCreateHistoryPayload(session: StoredGameSession): CreateGameHistoryPayload {
+    private getCreateHistoryPayload(session: ServerGameSession): CreateGameHistoryPayload {
         return {
             id: session.currentGameId,
             sessionId: session.id,
@@ -792,14 +879,7 @@ export class SessionManager {
         this.scheduledShutdownTimer = null;
     }
 
-    private listStoredSessions(): StoredGameSession[] {
+    private listStoredSessions(): ServerGameSession[] {
         return Array.from(this.sessions.values());
-    }
-
-    private findSessionsByParticipant(participantId: string): StoredGameSession[] {
-        return this.listStoredSessions().filter((session) =>
-            session.players.some((participant) => participant.id === participantId)
-            || session.spectators.some((participant) => participant.id === participantId)
-        );
     }
 }

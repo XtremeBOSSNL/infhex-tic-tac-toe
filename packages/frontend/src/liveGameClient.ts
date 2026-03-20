@@ -10,6 +10,7 @@ import { fetchJson, getDeviceId, getSocketUrl } from './apiClient'
 import { getActiveSessionId, useLiveGameStore } from './liveGameStore'
 import { queryClient } from './queryClient'
 import { queryKeys, sortLobbySessions } from './queryHooks'
+import { buildSessionPath } from './routes/archiveRouteState'
 
 let socket: Socket<ServerToClientEvents, ClientToServerEvents> | null = null
 let shouldHandleDisconnect = true
@@ -20,6 +21,16 @@ function showErrorToast(message: string) {
   toast.error(message, {
     toastId: `error:${message}`
   })
+}
+
+function navigateToSession(sessionId: string) {
+  const sessionPath = buildSessionPath(sessionId)
+  if (window.location.pathname === sessionPath) {
+    return
+  }
+
+  window.history.pushState(null, '', sessionPath)
+  window.dispatchEvent(new PopStateEvent('popstate'))
 }
 
 export function startLiveGameClient() {
@@ -62,7 +73,8 @@ export function startLiveGameClient() {
   })
 
   socket.on('session-joined', data => {
-    useLiveGameStore.getState().joinSession(data)
+    useLiveGameStore.getState().setupSession(data)
+    navigateToSession(data.sessionId)
   })
 
   socket.on('session-updated', data => {
@@ -157,7 +169,17 @@ export async function hostGame(request: CreateSessionRequest): Promise<string | 
 }
 
 export function joinGame(sessionId: string) {
-  useLiveGameStore.getState().startJoiningSession(sessionId)
+  const state = useLiveGameStore.getState()
+  const activeSessionId = getActiveSessionId(state.screen)
+  if (activeSessionId === sessionId) {
+    return
+  }
+
+  if (state.pendingSessionJoin.status === 'pending' && state.pendingSessionJoin.sessionId === sessionId) {
+    return
+  }
+
+  state.startJoiningSession(sessionId)
   socket?.emit('join-session', {
     sessionId
   })
@@ -194,7 +216,6 @@ export function returnToLobby() {
     socket?.emit('leave-session', activeSessionId)
   }
 
-  cancelRematch()
   state.resetToLobby()
   void fetchAvailableSessions()
 }
