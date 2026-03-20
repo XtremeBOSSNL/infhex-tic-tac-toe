@@ -37,6 +37,7 @@ import {
     createGameSession,
 } from './types';
 import { randomUUID } from 'node:crypto';
+import assert from 'node:assert';
 
 export class SessionError extends Error {
     constructor(message: string) {
@@ -789,6 +790,9 @@ export class SessionManager {
         if (!info) {
             return null;
         }
+
+        assert(info.participant.connection.status === "orphaned");
+        clearTimeout(info.participant.connection.timeout);
 
         info.participant.connection = {
             status: "connected",
