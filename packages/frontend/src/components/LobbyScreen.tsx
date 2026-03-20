@@ -131,7 +131,7 @@ function LobbyScreen({
                       </div>
                       <div className="mt-2 break-all text-xl font-bold text-white sm:text-2xl">{session.id}</div>
                       {session.canJoin && (
-                        <div className="mt-2 text-sm text-slate-300">Players waiting: ${session.playerCount}/${session.maxPlayers}</div>
+                        <div className="mt-2 text-sm text-slate-300">Players waiting: {session.playerCount}/{session.maxPlayers}</div>
                       )}
                       {!session.canJoin && session.startedAt && (
                         <div className="mt-1 text-sm text-slate-400">
