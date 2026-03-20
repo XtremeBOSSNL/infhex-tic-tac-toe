@@ -1,5 +1,6 @@
 import type {
   BoardState,
+  LobbyOptions,
   RematchUpdatedEvent,
   ServerToClientEvents,
   ShutdownState,
@@ -21,6 +22,7 @@ type LiveGameScreenState =
     kind: 'waiting'
     sessionId: string
     players: string[]
+    lobbyOptions: LobbyOptions
     participantRole: SessionParticipantRole
     boardState: BoardState
   }
@@ -28,6 +30,7 @@ type LiveGameScreenState =
     kind: 'playing'
     sessionId: string
     players: string[]
+    lobbyOptions: LobbyOptions
     participantRole: SessionParticipantRole
     boardState: BoardState
   }
@@ -92,6 +95,13 @@ function cloneBoardState(boardState: BoardState): BoardState {
   }
 }
 
+function cloneLobbyOptions(lobbyOptions: LobbyOptions): LobbyOptions {
+  return {
+    ...lobbyOptions,
+    timeControl: { ...lobbyOptions.timeControl }
+  }
+}
+
 function isActiveLiveGameScreenState(screen: LiveGameScreenState): screen is ActiveLiveGameScreenState {
   return screen.kind !== 'lobby'
 }
@@ -111,6 +121,7 @@ function createLiveSessionScreenState(params: {
   sessionState: SessionState
   participantRole: SessionParticipantRole
   players: string[]
+  lobbyOptions: LobbyOptions
   boardState: BoardState
 }): Extract<LiveGameScreenState, { kind: 'waiting' | 'playing' }> {
   return {
@@ -118,6 +129,7 @@ function createLiveSessionScreenState(params: {
     sessionId: params.sessionId,
     participantRole: params.participantRole,
     players: [...params.players],
+    lobbyOptions: cloneLobbyOptions(params.lobbyOptions),
     boardState: cloneBoardState(params.boardState)
   }
 }
@@ -157,6 +169,7 @@ export const useLiveGameStore = create<LiveGameStoreState>()(
           sessionState: payload.state,
           participantRole: payload.role,
           players: payload.players,
+          lobbyOptions: payload.lobbyOptions,
           boardState: createEmptyBoardState()
         })
       }),
@@ -172,6 +185,7 @@ export const useLiveGameStore = create<LiveGameStoreState>()(
           sessionState: payload.state,
           participantRole: currentScreen.participantRole,
           players: payload.players,
+          lobbyOptions: currentScreen.lobbyOptions,
           boardState: currentScreen.boardState
         })
       }),
@@ -191,6 +205,7 @@ export const useLiveGameStore = create<LiveGameStoreState>()(
           sessionState: payload.sessionState,
           participantRole: currentScreen.participantRole,
           players: currentScreen.players,
+          lobbyOptions: currentScreen.lobbyOptions,
           boardState: payload.gameState
         })
       }),

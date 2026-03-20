@@ -24,7 +24,9 @@ export function sortLobbySessions(sessions: SessionInfo[]) {
 
 async function fetchAvailableSessions() {
   const sessions = await fetchJson<SessionInfo[]>('/api/sessions')
-  return sortLobbySessions(sessions.filter(session => session.state !== 'finished'))
+  return sortLobbySessions(
+    sessions.filter(session => session.state !== 'finished' && session.lobbyOptions.visibility === 'public')
+  )
 }
 
 async function fetchFinishedGames(page: number, pageSize: number, baseTimestamp: number) {

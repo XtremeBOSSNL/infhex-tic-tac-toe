@@ -1,5 +1,6 @@
 import type {
   ClientToServerEvents,
+  CreateSessionRequest,
   CreateSessionResponse,
   ServerToClientEvents
 } from '@ih3t/shared'
@@ -50,7 +51,7 @@ export function startLiveGameClient() {
   socket.on('sessions-updated', (sessions) => {
     queryClient.setQueryData(
       queryKeys.availableSessions,
-      sortLobbySessions(sessions.filter(session => session.state !== 'finished'))
+      sortLobbySessions(sessions.filter(session => session.state !== 'finished' && session.lobbyOptions.visibility === 'public'))
     )
   })
 
@@ -135,13 +136,14 @@ export async function fetchAvailableSessions() {
   }
 }
 
-export async function hostGame() {
+export async function hostGame(request: CreateSessionRequest) {
   try {
     const data = await fetchJson<CreateSessionResponse>('/api/sessions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
-      }
+      },
+      body: JSON.stringify(request)
     })
     socket?.emit('join-session', data.sessionId)
   } catch (error) {

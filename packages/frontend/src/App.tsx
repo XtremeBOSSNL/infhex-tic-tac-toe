@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import type { CreateSessionRequest } from '@ih3t/shared'
 import { ToastContainer, toast } from 'react-toastify'
 import 'react-toastify/dist/ReactToastify.css'
 import FinishedGameReviewScreen from './components/FinishedGameReviewScreen'
@@ -156,6 +157,10 @@ function App() {
     }
   }
 
+  const createLobby = (request: CreateSessionRequest) => {
+    void hostGame(request)
+  }
+
   const navigateToLiveLobby = () => {
     returnToLobby()
     navigateTo({ page: 'live' })
@@ -236,7 +241,7 @@ function App() {
         isConnected={connection.isConnected}
         shutdown={shutdown}
         liveSessions={availableSessionsQuery.data ?? []}
-        onHostGame={hostGame}
+        onHostGame={createLobby}
         onJoinGame={joinGame}
         onViewFinishedGames={() => navigateTo({ page: 'finished-games', archivePage: 1, archiveBaseTimestamp: Date.now() })}
       />
@@ -246,6 +251,7 @@ function App() {
       <WaitingScreen
         sessionId={liveScreen.sessionId}
         playerCount={liveScreen.players.length}
+        lobbyOptions={liveScreen.lobbyOptions}
         onInviteFriend={() => inviteFriend(liveScreen.sessionId)}
         onCancel={leaveGame}
       />

@@ -3,6 +3,13 @@ import { injectable } from 'tsyringe';
 import type { SessionInfo } from '@ih3t/shared';
 import type { PendingRematch, StoredGameSession } from './types';
 
+function cloneLobbyOptions(lobbyOptions: StoredGameSession['lobbyOptions']): StoredGameSession['lobbyOptions'] {
+    return {
+        ...lobbyOptions,
+        timeControl: { ...lobbyOptions.timeControl }
+    };
+}
+
 @injectable()
 export class SessionStore {
     private readonly sessions = new Map<string, StoredGameSession>();
@@ -25,15 +32,36 @@ export class SessionStore {
     }
 
     listSessionInfos(): SessionInfo[] {
-        return this.listSessions().map((session) => ({
+        return this.listSessions()
+            .filter((session) => session.lobbyOptions.visibility === 'public')
+            .map((session) => ({
+                id: session.id,
+                playerCount: session.players.length,
+                maxPlayers: session.maxPlayers,
+                state: session.state,
+                lobbyOptions: cloneLobbyOptions(session.lobbyOptions),
+                canJoin: session.state === 'lobby' && session.players.length < session.maxPlayers,
+                createdAt: session.createdAt,
+                startedAt: session.startedAt
+            }));
+    }
+
+    getSessionInfo(sessionId: string): SessionInfo | null {
+        const session = this.getSession(sessionId);
+        if (!session) {
+            return null;
+        }
+
+        return {
             id: session.id,
             playerCount: session.players.length,
             maxPlayers: session.maxPlayers,
             state: session.state,
+            lobbyOptions: cloneLobbyOptions(session.lobbyOptions),
             canJoin: session.state === 'lobby' && session.players.length < session.maxPlayers,
             createdAt: session.createdAt,
             startedAt: session.startedAt
-        }));
+        };
     }
 
     findSessionsByParticipant(participantId: string): StoredGameSession[] {
@@ -59,7 +87,11 @@ export class SessionStore {
     }
 }
 
-export function createStoredGameSession(sessionId: string, createdAt = Date.now()): StoredGameSession {
+export function createStoredGameSession(
+    sessionId: string,
+    lobbyOptions: StoredGameSession['lobbyOptions'],
+    createdAt = Date.now()
+): StoredGameSession {
     return {
         id: sessionId,
         historyId: randomUUID(),
@@ -67,6 +99,7 @@ export function createStoredGameSession(sessionId: string, createdAt = Date.now(
         spectators: [],
         maxPlayers: 2,
         state: 'lobby',
+        lobbyOptions: cloneLobbyOptions(lobbyOptions),
         createdAt,
         startedAt: null,
         moveHistory: [],

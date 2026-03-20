@@ -1,13 +1,16 @@
+import type { LobbyOptions } from '@ih3t/shared'
+import { formatTimeControl } from '../lobbyOptions'
 import ScreenFooter from './ScreenFooter'
 
 interface WaitingScreenProps {
   sessionId: string
   playerCount: number
+  lobbyOptions: LobbyOptions
   onInviteFriend: () => void
   onCancel: () => void
 }
 
-function WaitingScreen({ sessionId, playerCount, onInviteFriend, onCancel }: Readonly<WaitingScreenProps>) {
+function WaitingScreen({ sessionId, playerCount, lobbyOptions, onInviteFriend, onCancel }: Readonly<WaitingScreenProps>) {
   return (
     <div className="min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.22),_transparent_30%),linear-gradient(135deg,_#111827,_#0f172a_45%,_#1e293b)] text-white">
       <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col justify-between px-4 py-6 sm:px-6 sm:py-10">
@@ -38,23 +41,31 @@ function WaitingScreen({ sessionId, playerCount, onInviteFriend, onCancel }: Rea
             <div className="absolute -right-6 bottom-8 hidden h-28 w-28 rounded-full bg-amber-300/20 blur-2xl sm:block" />
 
             <div className="relative flex flex-1 flex-col justify-center">
+              <div className={`mx-auto inline-flex items-center rounded-full border px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.28em] ${lobbyOptions.visibility === 'private'
+                ? 'border-amber-300/40 bg-amber-300/10 text-amber-100'
+                : 'border-sky-300/35 bg-sky-300/10 text-sky-100'
+                }`}>
+                {lobbyOptions.visibility === 'private' ? 'Private Lobby' : 'Public Lobby'}
+              </div>
               <h2 className="mt-5 text-3xl font-black uppercase tracking-[0.08em] text-white sm:mt-6 sm:text-5xl">
                 Waiting For
                 <br />
                 Another Player
               </h2>
               <p className="mt-4 text-sm leading-6 text-slate-200 sm:text-base sm:leading-7">
-                Keep this session open. As soon as the second player joins, the match will launch automatically.
+                {lobbyOptions.visibility === 'private'
+                  ? 'Keep this session open and share the invite link with the player you want to join. The match will launch automatically once they arrive.'
+                  : 'Keep this session open. As soon as the second player joins, the match will launch automatically.'}
               </p>
 
-              <div className="mt-6 grid gap-3 sm:mt-8 sm:grid-cols-2 sm:gap-4">
-                <div className="rounded-[1.5rem] border border-white/10 bg-slate-950/35 p-4 sm:rounded-3xl sm:p-5">
+              <div className="mt-6 grid gap-3 sm:mt-8 sm:gap-4 sm:grid-cols-2">
+                <div className="min-w-0 rounded-[1.5rem] border border-white/10 bg-slate-950/35 p-4 sm:rounded-3xl sm:p-5">
                   <div className="text-xs uppercase tracking-[0.28em] text-slate-300">Session ID</div>
                   <div className="mt-2 break-all text-2xl font-bold text-amber-200 sm:text-3xl">{sessionId}</div>
                 </div>
-                <div className="rounded-[1.5rem] border border-white/10 bg-slate-950/35 p-4 sm:rounded-3xl sm:p-5">
-                  <div className="text-xs uppercase tracking-[0.28em] text-slate-300">Players Ready</div>
-                  <div className="mt-2 text-2xl font-bold text-white sm:text-3xl">{playerCount}/2</div>
+                <div className="min-w-0 rounded-[1.5rem] border border-white/10 bg-slate-950/35 p-4 sm:rounded-3xl sm:p-5">
+                  <div className="text-xs uppercase tracking-[0.28em] text-slate-300">Time Control</div>
+                  <div className="mt-2 break-words text-xl font-bold leading-tight text-white sm:text-2xl">{formatTimeControl(lobbyOptions.timeControl)}</div>
                 </div>
               </div>
 

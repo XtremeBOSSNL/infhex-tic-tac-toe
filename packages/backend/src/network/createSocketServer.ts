@@ -182,6 +182,7 @@ export class SocketServerGateway {
                             state: nextSession.state,
                             role: 'player',
                             players: nextSession.players,
+                            lobbyOptions: nextSession.lobbyOptions,
                             participantId: playerConnection.playerId
                         });
                     }
@@ -294,6 +295,7 @@ export class SocketServerGateway {
             state: joinResult.state,
             role: joinResult.role,
             players: joinResult.players,
+            lobbyOptions: joinResult.lobbyOptions,
             participantId
         });
 

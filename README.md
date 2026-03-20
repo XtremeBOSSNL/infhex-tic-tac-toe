@@ -32,6 +32,9 @@ While the backend is running, type `shutdown` into the backend terminal and pres
 This immediately blocks new games, gives existing sessions up to 10 minutes to finish, and then closes any remaining sessions before the server exits.
 Sending `SIGINT` or `SIGTERM` now follows the same graceful path on the first and second signal; the process exits immediately only after the third signal.
 
+When creating a match from the lobby, you can now choose whether the lobby is public or private. Public lobbies appear in the live browser, while private lobbies stay hidden and are intended for direct invites.
+Lobby creation also stores a selected time control (`Unlimited`, `Turn Based`, or `Match Based` with increment), but the actual gameplay clock enforcement has not been implemented yet.
+
 ## AI Use
 > This project was built mostly with AI-assisted "vibe coding" techniques.
 

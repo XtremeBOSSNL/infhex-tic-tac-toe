@@ -245,7 +245,7 @@ export class HttpApplication {
 
         const inviteSessionId = getSingleQueryValue(req.query.join);
         if (req.path === '/' && inviteSessionId) {
-            const inviteSession = this.sessionManager.listSessions().find(session => session.id === inviteSessionId);
+            const inviteSession = this.sessionManager.getSessionInfo(inviteSessionId);
             if (!inviteSession) {
                 return {
                     ...defaultMetadata,
@@ -261,8 +261,8 @@ export class HttpApplication {
                     ? `Join Lobby ${inviteSession.id} • ${DEFAULT_PAGE_TITLE}`
                     : `Spectate Match ${inviteSession.id} • ${DEFAULT_PAGE_TITLE}`,
                 description: inviteSession.canJoin
-                    ? `A player is waiting in lobby ${inviteSession.id}. Open the game to join the match immediately.`
-                    : `A live Infinity Hexagonial Tic-Tac-Toe match is underway in session ${inviteSession.id}. Open to spectate it live.`,
+                    ? `A ${inviteSession.lobbyOptions.visibility} lobby is waiting in session ${inviteSession.id}. Open the game to join the match immediately.`
+                    : `A ${inviteSession.lobbyOptions.visibility} Infinity Hexagonial Tic-Tac-Toe match is underway in session ${inviteSession.id}. Open to spectate it live.`,
                 robots: 'noindex, nofollow'
             };
         }

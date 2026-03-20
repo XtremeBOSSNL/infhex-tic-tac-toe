@@ -1,6 +1,12 @@
 import express from 'express';
 import { inject, injectable } from 'tsyringe';
-import type { CreateSessionResponse } from '@ih3t/shared';
+import {
+    DEFAULT_LOBBY_OPTIONS,
+    type CreateSessionRequest,
+    type CreateSessionResponse,
+    type LobbyTimeControl,
+    type LobbyOptions,
+} from '@ih3t/shared';
 import { getRequestClientInfo } from '../clientInfo';
 import { GameHistoryRepository } from '../../persistence/gameHistoryRepository';
 import { SessionError, SessionManager } from '../../session/sessionManager';
@@ -45,8 +51,10 @@ export class ApiRouter {
 
         router.post('/sessions', express.json(), (req, res) => {
             try {
+                const lobbyOptions = this.parseLobbyOptions(req.body);
                 const response: CreateSessionResponse = this.sessionManager.createSession({
-                    client: getRequestClientInfo(req)
+                    client: getRequestClientInfo(req),
+                    lobbyOptions
                 });
 
                 res.json(response);
@@ -63,6 +71,43 @@ export class ApiRouter {
         this.router = router;
     }
 
+    private parseLobbyOptions(body: unknown): LobbyOptions {
+        const request = (body ?? {}) as CreateSessionRequest;
+        const visibility = request.lobbyOptions?.visibility;
+        const timeControl = this.parseLobbyTimeControl(request.lobbyOptions?.timeControl);
+
+        return {
+            visibility: visibility === 'private' || visibility === 'public'
+                ? visibility
+                : DEFAULT_LOBBY_OPTIONS.visibility,
+            timeControl
+        };
+    }
+
+    private parseLobbyTimeControl(value: unknown): LobbyTimeControl {
+        if (!value || typeof value !== 'object') {
+            return { ...DEFAULT_LOBBY_OPTIONS.timeControl };
+        }
+
+        const candidate = value as Partial<LobbyTimeControl> & Record<string, unknown>;
+        if (candidate.mode === 'turn') {
+            return {
+                mode: 'turn',
+                turnTimeMs: this.clampMilliseconds(candidate.turnTimeMs, 5_000, 120_000)
+            };
+        }
+
+        if (candidate.mode === 'match') {
+            return {
+                mode: 'match',
+                mainTimeMs: this.clampMilliseconds(candidate.mainTimeMs, 60_000, 3_600_000),
+                incrementMs: this.clampMilliseconds(candidate.incrementMs, 1_000, 300_000)
+            };
+        }
+
+        return { mode: 'unlimited' };
+    }
+
     private parsePositiveInteger(value: unknown, fallback: number): number {
         const candidate = Array.isArray(value) ? value[0] : value;
         const parsedValue = Number.parseInt(String(candidate ?? ''), 10);
@@ -72,5 +117,14 @@ export class ApiRouter {
         }
 
         return parsedValue;
+    }
+
+    private clampMilliseconds(value: unknown, minimum: number, maximum: number): number {
+        const parsedValue = Number.parseInt(String(value ?? ''), 10);
+        if (!Number.isFinite(parsedValue)) {
+            return minimum;
+        }
+
+        return Math.min(maximum, Math.max(minimum, parsedValue));
     }
 }

@@ -77,6 +77,10 @@ export class SessionManager {
         return this.store.listSessionInfos();
     }
 
+    getSessionInfo(sessionId: string): SessionInfo | null {
+        return this.store.getSessionInfo(sessionId);
+    }
+
     getTerminalSessionStatuses(now = Date.now()): TerminalSessionStatus[] {
         return this.store.listSessions().map((session) => ({
             sessionId: session.id,
@@ -145,7 +149,7 @@ export class SessionManager {
         }
 
         const sessionId = this.createSessionId();
-        const session = createStoredGameSession(sessionId);
+        const session = createStoredGameSession(sessionId, params.lobbyOptions);
 
         this.store.saveSession(session);
         this.emitSessionsUpdated();
@@ -169,6 +173,7 @@ export class SessionManager {
                 state: session.state,
                 role: existingRole,
                 players: [...session.players],
+                lobbyOptions: { ...session.lobbyOptions },
                 isNewParticipant: false,
                 gameState: session.state === 'ingame' ? this.simulation.getPublicGameState(session) : undefined
             };
@@ -212,6 +217,7 @@ export class SessionManager {
             state: session.state,
             role,
             players: [...session.players],
+            lobbyOptions: { ...session.lobbyOptions },
             isNewParticipant: true,
             gameState: role === 'spectator' ? this.simulation.getPublicGameState(session) : undefined
         };
@@ -339,7 +345,7 @@ export class SessionManager {
         this.store.deletePendingRematch(finishedSessionId);
 
         const nextSessionId = this.createSessionId();
-        const nextSession = createStoredGameSession(nextSessionId);
+        const nextSession = createStoredGameSession(nextSessionId, rematch.lobbyOptions);
         nextSession.players = [...rematch.players];
 
         /* reverse the player order to effectively "switch sides" on re-match */
@@ -352,7 +358,8 @@ export class SessionManager {
         return {
             sessionId: nextSession.id,
             state: nextSession.state,
-            players: [...nextSession.players]
+            players: [...nextSession.players],
+            lobbyOptions: { ...nextSession.lobbyOptions }
         };
     }
 
@@ -453,6 +460,7 @@ export class SessionManager {
                 this.store.savePendingRematch({
                     finishedSessionId: session.id,
                     players: [...session.players],
+                    lobbyOptions: { ...session.lobbyOptions },
                     availablePlayerIds: new Set<string>(session.players),
                     requestedPlayerIds: new Set<string>(),
                     createdAt: finishedAt

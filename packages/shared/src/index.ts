@@ -3,6 +3,23 @@ export type SessionState = 'lobby' | 'ingame' | 'finished';
 export type SessionParticipantRole = 'player' | 'spectator';
 export type CellOccupant = string & { _type?: "CellOccupant" };
 export type SessionFinishReason = 'disconnect' | 'timeout' | 'terminated' | 'six-in-a-row';
+export type LobbyVisibility = 'public' | 'private';
+export type LobbyTimeControl =
+    | { mode: 'unlimited' }
+    | { mode: 'turn'; turnTimeMs: number }
+    | { mode: 'match'; mainTimeMs: number; incrementMs: number };
+
+export interface LobbyOptions {
+    visibility: LobbyVisibility;
+    timeControl: LobbyTimeControl;
+}
+
+export const DEFAULT_LOBBY_OPTIONS: LobbyOptions = {
+    visibility: 'public',
+    timeControl: {
+        mode: 'unlimited'
+    }
+};
 
 export interface ShutdownState {
     scheduledAt: number;
@@ -29,11 +46,12 @@ export interface GameSession {
     spectators: string[];
     maxPlayers: 2; // Fixed to 2 players
     state: SessionState;
+    lobbyOptions: LobbyOptions;
     gameState: BoardState;
 }
 
 export interface CreateSessionRequest {
-    // No maxPlayers needed since it's always 2
+    lobbyOptions?: LobbyOptions;
 }
 
 export interface CreateSessionResponse {
@@ -45,6 +63,7 @@ export interface SessionInfo {
     playerCount: number;
     maxPlayers: 2; // Always 2
     state: SessionState;
+    lobbyOptions: LobbyOptions;
     canJoin: boolean; // Whether the session can accept new players
     createdAt: number;
     startedAt: number | null;
@@ -112,6 +131,7 @@ export interface ServerToClientEvents {
         state: SessionState;
         role: SessionParticipantRole;
         players: string[];
+        lobbyOptions: LobbyOptions;
         participantId: string;
     }) => void;
     'session-finished': (data: SessionFinishedEvent) => void;

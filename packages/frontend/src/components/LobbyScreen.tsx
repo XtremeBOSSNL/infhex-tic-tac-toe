@@ -1,12 +1,14 @@
-import type { SessionInfo, ShutdownState } from '@ih3t/shared'
+import type { CreateSessionRequest, SessionInfo, ShutdownState } from '@ih3t/shared'
 import { useEffect, useState } from 'react'
+import CreateLobbyDialog from './CreateLobbyDialog'
+import { formatTimeControl } from '../lobbyOptions'
 import ScreenFooter from './ScreenFooter'
 
 interface LobbyScreenProps {
   isConnected: boolean
   shutdown: ShutdownState | null
   liveSessions: SessionInfo[]
-  onHostGame: () => void
+  onHostGame: (request: CreateSessionRequest) => void
   onJoinGame: (sessionId: string) => void
   onViewFinishedGames: () => void
 }
@@ -32,6 +34,7 @@ function LobbyScreen({
 }: LobbyScreenProps) {
   const isHostingDisabled = !isConnected || Boolean(shutdown)
   const [now, setNow] = useState(() => Date.now())
+  const [isCreateLobbyDialogOpen, setIsCreateLobbyDialogOpen] = useState(false)
 
   useEffect(() => {
     const interval = window.setInterval(() => {
@@ -43,6 +46,11 @@ function LobbyScreen({
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.22),_transparent_30%),linear-gradient(135deg,_#111827,_#0f172a_45%,_#1e293b)] text-white">
+      <CreateLobbyDialog
+        isOpen={isCreateLobbyDialogOpen}
+        onClose={() => setIsCreateLobbyDialogOpen(false)}
+        onCreateLobby={onHostGame}
+      />
       <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col justify-between px-4 py-6 sm:px-6 sm:py-10">
         <div className="grid gap-6 lg:grid-cols-2 lg:items-stretch lg:gap-8">
           <section className="relative flex overflow-hidden rounded-[1.75rem] border border-white/10 bg-white/6 p-6 shadow-[0_20px_80px_rgba(15,23,42,0.45)] backdrop-blur sm:min-h-[34rem] sm:rounded-[2rem] sm:p-8 md:p-10 sm:h-[34rem]">
@@ -66,7 +74,7 @@ function LobbyScreen({
 
               <div className="mt-6 grid gap-3 sm:mt-8 sm:flex sm:flex-wrap sm:gap-4">
                 <button
-                  onClick={onHostGame}
+                  onClick={() => setIsCreateLobbyDialogOpen(true)}
                   disabled={isHostingDisabled}
                   className={`rounded-full px-6 py-3 text-sm font-semibold uppercase tracking-[0.16em] transition sm:px-7 sm:text-base sm:tracking-[0.18em] ${!isHostingDisabled
                     ? 'bg-amber-300 text-slate-900 shadow-[0_10px_35px_rgba(251,191,36,0.35)] hover:-translate-y-0.5 hover:bg-amber-200'
@@ -123,13 +131,19 @@ function LobbyScreen({
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <div className="text-[11px] uppercase tracking-[0.22em] text-sky-200/75 sm:text-xs sm:tracking-[0.28em]">Session</div>
-                          <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${session.canJoin
-                            ? 'bg-emerald-400/15 text-emerald-200'
-                            : 'bg-sky-400/15 text-sky-200'
-                            }`}>
-                            {session.canJoin ? 'Open Lobby' : 'Active Game'}
-                          </span>
-                        </div>
+                        <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${session.canJoin
+                          ? 'bg-emerald-400/15 text-emerald-200'
+                          : 'bg-sky-400/15 text-sky-200'
+                          }`}>
+                          {session.canJoin ? 'Open Lobby' : 'Active Game'}
+                        </span>
+                        <span className="rounded-full bg-white/8 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-200">
+                          {session.lobbyOptions.visibility}
+                        </span>
+                        <span className="rounded-full bg-white/8 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-200">
+                          {formatTimeControl(session.lobbyOptions.timeControl)}
+                        </span>
+                      </div>
                         <div className="mt-2 break-all text-xl font-bold text-white sm:text-2xl">{session.id}</div>
                         {session.canJoin && (
                           <div className="mt-2 text-sm text-slate-300">Players waiting: {session.playerCount}/{session.maxPlayers}</div>

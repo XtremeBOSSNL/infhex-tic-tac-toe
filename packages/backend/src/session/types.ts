@@ -2,6 +2,7 @@ import type {
     BoardState,
     GameMove,
     GameSession,
+    LobbyOptions,
     ShutdownState,
     SessionFinishReason,
     SessionInfo,
@@ -22,6 +23,7 @@ export type PlayerLeaveSource = 'leave-session' | 'disconnect';
 export interface PendingRematch {
     finishedSessionId: string;
     players: string[];
+    lobbyOptions: LobbyOptions;
     availablePlayerIds: Set<string>;
     requestedPlayerIds: Set<string>;
     createdAt: number;
@@ -44,12 +46,14 @@ export interface JoinSessionResult {
     state: SessionState;
     role: SessionParticipantRole;
     players: string[];
+    lobbyOptions: LobbyOptions;
     isNewParticipant: boolean;
     gameState?: PublicGameStatePayload;
 }
 
 export interface CreateSessionParams {
     client: RequestClientInfo;
+    lobbyOptions: LobbyOptions;
 }
 
 export interface PlayerLeftEvent {
@@ -100,4 +104,5 @@ export interface RematchSessionResult {
     sessionId: string;
     state: SessionState;
     players: string[];
+    lobbyOptions: LobbyOptions;
 }
