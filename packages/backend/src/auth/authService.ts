@@ -1,5 +1,5 @@
 import { ExpressAuth, getSession, type ExpressAuthConfig, type Session } from '@auth/express';
-import Discord, { type DiscordProfile } from '@auth/express/providers/discord';
+import _Discord, { type DiscordProfile } from '@auth/express/providers/discord';
 import type { Request } from 'express';
 import type { Socket } from 'socket.io';
 import type { ClientToServerEvents, ServerToClientEvents } from '@ih3t/shared';
@@ -8,6 +8,8 @@ import { ServerConfig } from '../config/serverConfig';
 import { getCookieValue } from '../network/clientInfo';
 import { CorsConfiguration } from '../network/cors';
 import { AuthRepository, type AccountUserProfile } from './authRepository';
+
+const Discord: typeof _Discord = (_Discord as any)["default"] ?? _Discord;
 
 type SessionUserShape = {
     id?: string;
