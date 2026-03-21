@@ -89,14 +89,8 @@ export function useQueryAdminStats(timezoneOffsetMinutes: number, options?: { en
     queryKey: queryKeys.adminStats(timezoneOffsetMinutes),
     queryFn: () => fetchAdminStats(timezoneOffsetMinutes),
     enabled: options?.enabled,
-    refetchInterval: (query) => {
-      const nextRefreshAt = query.state.data?.leaderboard.nextRefreshAt
-      if (!nextRefreshAt) {
-        return 10 * 60 * 1000
-      }
 
-      return Math.max(1_000, nextRefreshAt - Date.now())
-    },
+    refetchInterval: 10_000,
     refetchIntervalInBackground: true
   })
 }
