@@ -13,8 +13,8 @@ import {
 } from '@ih3t/shared';
 import { z } from 'zod';
 import { AuthService } from '../auth/authService';
-import { BackgroundWorkerHub } from '../background/backgroundWorkers';
 import { ROOT_LOGGER } from '../logger';
+import { MetricsTracker } from '../metrics/metricsTracker';
 import { getSocketClientInfo as parseSocketClientInfo } from './clientInfo';
 import { CorsConfiguration } from './cors';
 import { SessionError, SessionManager } from '../session/sessionManager';
@@ -26,7 +26,6 @@ import type {
     PublicGameStatePayload,
     SessionUpdatedEvent,
 } from '../session/types';
-import { inspect } from 'node:util';
 
 type Participation = {
     sessionId: string,
@@ -49,7 +48,7 @@ export class SocketServerGateway {
         @inject(ROOT_LOGGER) rootLogger: Logger,
         @inject(AuthService) private readonly authService: AuthService,
         @inject(SessionManager) private readonly sessionManager: SessionManager,
-        @inject(BackgroundWorkerHub) private readonly backgroundWorkers: BackgroundWorkerHub,
+        @inject(MetricsTracker) private readonly metricsTracker: MetricsTracker,
         @inject(CorsConfiguration) private readonly corsConfiguration: CorsConfiguration
     ) {
         this.logger = rootLogger.child({ component: 'socket-server' });
@@ -124,7 +123,7 @@ export class SocketServerGateway {
             }
         }
 
-        this.backgroundWorkers.track('site-visited', { client: clientInfo });
+        this.metricsTracker.track('site-visited', { client: clientInfo });
         socket.emit('lobby-list', this.sessionManager.listLobbyInfo());
         socket.emit('shutdown-updated', this.sessionManager.getShutdownState());
 

@@ -7,10 +7,12 @@ import type {
     SessionParticipantRole,
     ShutdownState
 } from '@ih3t/shared';
+import { randomUUID } from 'node:crypto';
+import assert from 'node:assert';
 import type { Logger } from 'pino';
 import { inject, injectable } from 'tsyringe';
-import { BackgroundWorkerHub } from '../background/backgroundWorkers';
 import { ROOT_LOGGER } from '../logger';
+import { MetricsTracker } from '../metrics/metricsTracker';
 import {
     GameHistoryRepository,
 } from '../persistence/gameHistoryRepository';
@@ -28,7 +30,6 @@ import type {
     SessionUpdatedEvent,
     ServerGameSession,
     ServerSessionParticipant,
-    PublicGameStatePayload,
     ClientGameParticipation,
 } from './types';
 import {
@@ -38,8 +39,6 @@ import {
     cloneStoredParticipants,
     createGameSession,
 } from './types';
-import { randomUUID } from 'node:crypto';
-import assert from 'node:assert';
 
 export class SessionError extends Error {
     constructor(message: string) {
@@ -86,7 +85,7 @@ export class SessionManager {
         @inject(ROOT_LOGGER) rootLogger: Logger,
         @inject(GameSimulation) private readonly simulation: GameSimulation,
         @inject(GameHistoryRepository) private readonly gameHistoryRepository: GameHistoryRepository,
-        @inject(BackgroundWorkerHub) private readonly backgroundWorkers: BackgroundWorkerHub
+        @inject(MetricsTracker) private readonly metricsTracker: MetricsTracker
     ) {
         this.logger = rootLogger.child({ component: 'session-manager' });
     }
@@ -228,7 +227,15 @@ export class SessionManager {
         // This reduces the total update count.
         // this.emitLobbyListUpdated();
 
-        this.backgroundWorkers.track('game-created', {
+        this.logger.info({
+            event: 'session.created',
+            sessionId: session.id,
+            visibility: session.gameOptions.visibility,
+            createdAt: session.createdAt,
+            client: params.client
+        }, 'Session created');
+
+        this.metricsTracker.track('game-created', {
             sessionId,
             createdAt: new Date(session.createdAt).toISOString(),
             client: params.client
@@ -286,7 +293,7 @@ export class SessionManager {
         const sessionInfo = this.toSessionInfo(session);
         this.emitLobbyListUpdated();
         this.emitSessionUpdated(session);
-        this.backgroundWorkers.track(role === 'player' ? 'game-joined' : 'spectator-joined', {
+        this.metricsTracker.track(role === 'player' ? 'game-joined' : 'spectator-joined', {
             sessionId: session.id,
             [`${role}Id`]: participant.id,
             players: session.players.map(({ id }) => id),
@@ -318,6 +325,11 @@ export class SessionManager {
         }
 
         await this.reconcileLobbyState(session);
+    }
+
+    async reconcileLobbySessions(): Promise<void> {
+        const lobbySessions = [...this.sessions.values()].filter((session) => session.state !== 'finished');
+        await Promise.allSettled(lobbySessions.map((session) => this.reconcileLobbyState(session)));
     }
 
     leaveSession(sessionId: string, participantId: string, source: PlayerLeaveSource): void {
@@ -487,10 +499,6 @@ export class SessionManager {
         this.emitSessionUpdated(session);
     }
 
-    expireStaleRematches(_maxAgeMs: number): void {
-        /* rematches now live on the finished session itself */
-    }
-
     private readonly handleTurnExpired = (sessionId: string): void => {
         const session = this.sessions.get(sessionId);
         if (!session || session.state !== 'in-game' || session.players.length < MAX_PLAYERS_PER_SESSION) {
@@ -590,7 +598,7 @@ export class SessionManager {
 
         void this.ensureGameHistory(session).then((gameId) => this.gameHistoryRepository.finishGame(gameId, result));
 
-        this.backgroundWorkers.track('game-finished', {
+        this.metricsTracker.track('game-finished', {
             sessionId: session.id,
             reason,
             winningPlayerId,
@@ -634,7 +642,7 @@ export class SessionManager {
     private removePlayerFromSession(session: ServerGameSession, participantId: string, source: PlayerLeaveSource): void {
         session.players = session.players.filter((player) => player.id !== participantId);
 
-        this.backgroundWorkers.track('game-left', {
+        this.metricsTracker.track('game-left', {
             sessionId: session.id,
             playerId: participantId,
             source,
@@ -672,7 +680,7 @@ export class SessionManager {
     private removeSpectatorFromSession(session: ServerGameSession, participantId: string, source: PlayerLeaveSource): void {
         session.spectators = session.spectators.filter((spectator) => spectator.id !== participantId);
 
-        this.backgroundWorkers.track('spectator-left', {
+        this.metricsTracker.track('spectator-left', {
             sessionId: session.id,
             spectatorId: participantId,
             source,

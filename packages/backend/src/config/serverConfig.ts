@@ -17,7 +17,6 @@ export class ServerConfig {
     readonly discordClientSecret = this.requireFirstEnv('AUTH_DISCORD_SECRET', 'DISCORD_CLIENT_SECRET');
     readonly logLevel = process.env.LOG_LEVEL?.trim() || (process.env.NODE_ENV === 'production' ? 'info' : 'debug');
     readonly prettyLogs = this.parseBoolean(process.env.LOG_PRETTY) ?? process.env.NODE_ENV !== 'production';
-    readonly rematchTtlMs = this.parsePositiveInt(process.env.REMATCH_TTL_MS);
 
     toLogObject() {
         return {

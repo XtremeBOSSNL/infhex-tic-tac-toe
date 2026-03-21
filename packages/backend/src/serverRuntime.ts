@@ -1,9 +1,10 @@
 import net from "node:net";
+import { CronJob } from 'cron';
 import type { Server as HttpServer } from 'node:http';
 import { createServer } from 'node:http';
+import { randomUUID } from "node:crypto";
 import type { Logger } from 'pino';
 import { inject, injectable } from 'tsyringe';
-import { BackgroundWorkerHub } from './background/backgroundWorkers';
 import { ServerConfig } from './config/serverConfig';
 import { ROOT_LOGGER } from './logger';
 import { HttpApplication } from './network/createHttpApp';
@@ -11,7 +12,6 @@ import { SocketServerGateway } from './network/createSocketServer';
 import { MongoDatabase } from './persistence/mongoClient';
 import { SessionManager } from './session/sessionManager';
 import { GameSimulation } from './simulation/gameSimulation';
-import { randomUUID } from "node:crypto";
 
 @injectable()
 export class ApplicationServer {
@@ -19,6 +19,7 @@ export class ApplicationServer {
 
     private readonly server: HttpServer;
     private readonly serverConnections = new Map<string, net.Socket>();
+    private readonly cronJobs: CronJob[] = [];
 
     private shutdownPromise: Promise<void> | null = null;
 
@@ -26,7 +27,6 @@ export class ApplicationServer {
         @inject(ROOT_LOGGER) rootLogger: Logger,
         @inject(HttpApplication) httpApplication: HttpApplication,
         @inject(SocketServerGateway) private readonly socketServerGateway: SocketServerGateway,
-        @inject(BackgroundWorkerHub) private readonly backgroundWorkers: BackgroundWorkerHub,
         @inject(GameSimulation) private readonly simulation: GameSimulation,
         @inject(MongoDatabase) private readonly mongoDatabase: MongoDatabase,
         @inject(SessionManager) private readonly sessionManager: SessionManager,
@@ -60,12 +60,7 @@ export class ApplicationServer {
 
         await this.mongoDatabase.getDatabase();
 
-        this.backgroundWorkers.start({
-            rematchTtlMs: this.serverConfig.rematchTtlMs,
-            onCleanupExpiredRematches: (maxAgeMs) => {
-                this.sessionManager.expireStaleRematches(maxAgeMs);
-            }
-        });
+        this.startCronJobs();
 
         this.server.on('error', (error) => {
             this.logger.error({
@@ -107,7 +102,7 @@ export class ApplicationServer {
 
             await this.shutdownHttpServer();
 
-            this.backgroundWorkers.stop();
+            this.stopCronJobs();
             this.simulation.dispose();
 
             try {
@@ -154,5 +149,70 @@ export class ApplicationServer {
             new Promise(resolve => setTimeout(resolve, 1_000)),
         ]);
         this.logger.debug({ event: 'server.shutting-down' }, 'HTTP server stopped');
+    }
+
+    private scheduleCronJob(options: {
+        name: string,
+        time: string,
+        callback: () => Promise<void>,
+    }) {
+        const job = CronJob.from({
+            cronTime: options.time,
+            start: true,
+            onTick: () => {
+                this.logger.debug(
+                    {
+                        event: 'cronjob.execute',
+                        cronName: options.name,
+                    },
+                    'Executing cron job'
+                );
+
+                options.callback()
+                    .then(() => {
+                        this.logger.debug({
+                            event: 'cronjob.executed',
+                            cronName: options.name,
+                        }, 'Cron job executed successfully');
+                    })
+                    .catch(error => {
+                        this.logger.warn({
+                            event: 'cronjob.error',
+                            cronName: options.name,
+                            cronTime: options.time,
+                            error
+                        }, 'Cron job execution failed with error');
+                    });
+            }
+        });
+
+        this.cronJobs.push(job);
+        this.logger.info({
+            event: 'cronjob.started',
+            cronName: options.name,
+            cronTime: options.time
+        }, 'Started a new cron job');
+    }
+
+    private startCronJobs(): void {
+        this.stopCronJobs();
+
+        this.scheduleCronJob({
+            name: "Lobby Cleanup",
+            time: '0 * * * * *',
+            callback: () => this.sessionManager.reconcileLobbySessions(),
+        });
+
+        this.logger.info({
+            event: 'lobby-cleanup.started',
+            cronTime: '0 * * * * *'
+        }, 'Started lobby cleanup cron job');
+    }
+
+    private stopCronJobs(): void {
+        while (this.cronJobs.length > 0) {
+            const job = this.cronJobs.pop();
+            job?.stop();
+        }
     }
 }
