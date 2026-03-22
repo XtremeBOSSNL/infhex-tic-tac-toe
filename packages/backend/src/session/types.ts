@@ -1,6 +1,5 @@
 import type {
     GameState,
-    GameMove,
     LobbyInfo,
     LobbyOptions,
     ParticipantConnection,
@@ -35,9 +34,8 @@ export interface ServerGameSession {
     state: 'lobby' | 'in-game' | 'finished';
     createdAt: number;
     startedAt: number | null;
-    currentGameId: string;
-    moveHistory: GameMove[];
-    boardState: GameState;
+    gameId: string;
+    gameState: GameState;
     finishReason: SessionFinishReason | null;
     winningPlayerId: string | null;
     rematchAcceptedPlayerIds: string[];
@@ -172,15 +170,24 @@ export function createGameSession(
 ): ServerGameSession {
     return {
         id: sessionId,
-        players: [],
-        spectators: [],
-        gameOptions: cloneGameOptions(gameOptions),
         state: 'lobby',
+
         createdAt: Date.now(),
         startedAt: null,
-        currentGameId: '',
-        moveHistory: [],
-        boardState: {
+
+        players: [],
+        spectators: [],
+
+        gameOptions: cloneGameOptions(gameOptions),
+
+        finishReason: null,
+        winningPlayerId: null,
+        rematchAcceptedPlayerIds: [],
+        isRatedGame: false,
+
+        gameId: '',
+        gamePlayers: [],
+        gameState: {
             cells: [],
             highlightedCells: [],
             playerTiles: {},
@@ -189,10 +196,5 @@ export function createGameSession(
             currentTurnExpiresAt: null,
             playerTimeRemainingMs: {}
         },
-        finishReason: null,
-        winningPlayerId: null,
-        rematchAcceptedPlayerIds: [],
-        gamePlayers: [],
-        isRatedGame: false
     };
 }

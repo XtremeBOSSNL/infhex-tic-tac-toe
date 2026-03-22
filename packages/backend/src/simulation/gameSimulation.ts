@@ -7,18 +7,15 @@ import {
     type GameState,
     zCellOccupant,
     type BoardCell,
-    type GameMove
 } from '@ih3t/shared';
 
 interface ApplyMoveParams {
     playerId: string;
     x: number;
     y: number;
-    timestamp?: number;
 }
 
 interface ApplyMoveResult {
-    move: GameMove;
     turnCompleted: boolean;
     winningPlayerId: string | null;
 }
@@ -54,7 +51,6 @@ export class GameSimulation {
 
     applyMove(boardState: GameState, params: ApplyMoveParams): ApplyMoveResult {
         const { playerId, x, y } = params;
-        const timestamp = params.timestamp ?? Date.now();
 
         if (boardState.currentTurnPlayerId !== playerId) {
             throw new SimulationError('It is not your turn');
@@ -81,14 +77,6 @@ export class GameSimulation {
         const turnCompleted = boardState.placementsRemaining === 1;
         const playerIds = Object.keys(boardState.playerTiles);
 
-        const move: GameMove = {
-            moveNumber: boardState.cells.length + 1,
-            playerId,
-            x,
-            y,
-            timestamp
-        };
-
         boardState.cells.push({
             x,
             y,
@@ -101,7 +89,6 @@ export class GameSimulation {
 
         if (this.hasSixInARow(boardState, playerId, x, y)) {
             return {
-                move,
                 turnCompleted,
                 winningPlayerId: playerId
             };
@@ -114,7 +101,6 @@ export class GameSimulation {
         }
 
         return {
-            move,
             turnCompleted,
             winningPlayerId: null
         };
