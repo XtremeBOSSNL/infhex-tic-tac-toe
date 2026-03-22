@@ -187,12 +187,20 @@ function AccountPreferencesScreen({
                     onToggle={(nextChecked) => void handlePreferenceToggle('moveConfirmation', nextChecked)}
                   /> */}
                   <PreferenceSwitchCard
-                    label='Show Tile Pice Markers'
+                    label='Show Tile Piece Markers'
                     description='Show visual "X" and "O" markers on hex tiles.'
                     checked={preferences.tilePieceMarkers}
                     disabled={isSavingPreference}
                     isSaving={savingPreferenceKey === 'tilePieceMarkers'}
                     onToggle={(nextChecked) => void handlePreferenceToggle('tilePieceMarkers', nextChecked)}
+                  />
+                  <PreferenceSwitchCard
+                    label="Auto-Place Opening Tile"
+                    description='Automatically place the opening tile at "0,0" when a new match starts and it is your turn.'
+                    checked={preferences.autoPlaceOriginTile}
+                    disabled={isSavingPreference}
+                    isSaving={savingPreferenceKey === 'autoPlaceOriginTile'}
+                    onToggle={(nextChecked) => void handlePreferenceToggle('autoPlaceOriginTile', nextChecked)}
                   />
                 </div>
               ) : (

@@ -165,6 +165,7 @@ function SessionRoute() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const navigate = useNavigate()
   const attemptedSessionIdRef = useRef<string | null>(null)
+  const autoPlacedOpeningTileGameKeyRef = useRef<string | null>(null)
   const handlingBlockedNavigationRef = useRef(false)
   const connection = useLiveGameStore(state => state.connection)
   const pendingSessionJoin = useLiveGameStore(state => state.pendingSessionJoin)
@@ -175,6 +176,7 @@ function SessionRoute() {
     enabled: Boolean(accountQuery.data?.user)
   })
   const currentPlayerId = connection.currentPlayerId
+  const autoPlaceOriginTile = accountPreferencesQuery.data?.preferences.autoPlaceOriginTile ?? false
   const showTilePieceMarkers = accountPreferencesQuery.data?.preferences.tilePieceMarkers ?? false
   const shouldBlockLeave = liveScreen.kind === 'session'
     && liveScreen.session.state === 'in-game'
@@ -265,6 +267,26 @@ function SessionRoute() {
     attemptedSessionIdRef.current = sessionId
     joinGame(sessionId)
   }, [connection.isInitialized, liveScreen.kind, sessionId])
+
+  useEffect(() => {
+    if (liveScreen.kind !== 'session' || liveScreen.session.state !== 'in-game' || !liveScreen.game) {
+      return
+    }
+
+    const participantRole = getParticipantRole(liveScreen.session.players, currentPlayerId)
+    const isOwnTurn = Boolean(currentPlayerId) && liveScreen.game.gameState.currentTurnPlayerId === currentPlayerId
+    if (!autoPlaceOriginTile || participantRole !== 'player' || !isOwnTurn || liveScreen.game.gameState.cells.length !== 0) {
+      return
+    }
+
+    const gameKey = `${liveScreen.sessionId}:${liveScreen.game.gameId}:${currentPlayerId}`
+    if (autoPlacedOpeningTileGameKeyRef.current === gameKey) {
+      return
+    }
+
+    autoPlacedOpeningTileGameKeyRef.current = gameKey
+    placeCell(0, 0)
+  }, [autoPlaceOriginTile, currentPlayerId, liveScreen])
 
   if (!sessionId) {
     return <Navigate to="/" replace />

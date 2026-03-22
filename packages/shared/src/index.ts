@@ -432,6 +432,7 @@ export type AccountStatistics = z.infer<typeof zAccountStatistics>;
 
 export const zAccountPreferences = z.object({
     moveConfirmation: z.boolean().default(false),
+    autoPlaceOriginTile: z.boolean().default(false),
     tilePieceMarkers: z.boolean().default(false),
     changelogReadAt: z.number().int().nonnegative().nullable().default(null)
 });
