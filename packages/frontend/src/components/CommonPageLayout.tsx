@@ -212,7 +212,7 @@ function CommonPageLayout({ limitWidth }: { limitWidth: boolean }) {
                   </svg>
                 </button>
                 {isAccountMenuOpen && (
-                  <div className="border-t mt-2 lg:mt-4 border-white/10 px-4 py-4 sm:px-6 absolute bg-slate-950 lg:p-0 lg:border-none lg:bg-transparent lg:mt-0 right-0 left-0 lg:left-auto lg:w-[18em] lg:text-right z-50">
+                  <div className="border-t mt-2 lg:mt-4 border-white/10 px-4 py-4 sm:px-6 absolute bg-slate-950 lg:p-0 lg:border-none lg:bg-transparent right-0 left-0 lg:left-auto lg:w-[18em] lg:text-right z-50">
                     {/* <div className="px-4 pb-4 sm:px-6 lg:max-w-sm w-full"> */}
                     <div
                       role="menu"

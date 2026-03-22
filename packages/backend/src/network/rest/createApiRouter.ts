@@ -2,8 +2,8 @@ import express from 'express';
 import { inject, injectable } from 'tsyringe';
 import { z } from 'zod';
 import {
-    type AccountProfile,
     type AccountResponse,
+    type AccountStatisticsResponse,
     type Leaderboard,
     type AdminStatsResponse,
     type AdminBroadcastMessageResponse,
@@ -17,8 +17,9 @@ import {
     zUpdateAccountProfileRequest,
 } from '@ih3t/shared';
 import { AdminStatsService } from '../../admin/adminStatsService';
-import { AuthRepository } from '../../auth/authRepository';
+import { AuthRepository, type AccountUserProfile } from '../../auth/authRepository';
 import { AuthService } from '../../auth/authService';
+import { EloRepository } from '../../elo/eloRepository';
 import { LeaderboardService } from '../../leaderboard/leaderboardService';
 import { getRequestClientInfo } from '../clientInfo';
 import { SocketServerGateway } from '../createSocketServer';
@@ -69,6 +70,7 @@ export class ApiRouter {
     constructor(
         @inject(AuthService) private readonly authService: AuthService,
         @inject(AuthRepository) private readonly authRepository: AuthRepository,
+        @inject(EloRepository) private readonly eloRepository: EloRepository,
         @inject(AdminStatsService) private readonly adminStatsService: AdminStatsService,
         @inject(LeaderboardService) private readonly leaderboardService: LeaderboardService,
         @inject(SocketServerGateway) private readonly socketServerGateway: SocketServerGateway,
@@ -80,6 +82,19 @@ export class ApiRouter {
         router.get('/account', async (req, res) => {
             const user = await this.authService.getCurrentUser(req);
             const response: AccountResponse = { user };
+            res.json(response);
+        });
+
+        router.get('/account/statistics', async (req, res) => {
+            const user = await this.authService.getCurrentUser(req);
+            if (!user) {
+                res.status(401).json({ error: 'Sign in with Discord to view your statistics.' });
+                return;
+            }
+
+            const response: AccountStatisticsResponse = {
+                statistics: await this.buildAccountStatistics(user)
+            };
             res.json(response);
         });
 
@@ -250,7 +265,29 @@ export class ApiRouter {
         return zUpdateAccountProfileRequest.parse(body ?? {}).username;
     }
 
-    private async requireAdminUser(req: express.Request, res: express.Response): Promise<AccountProfile | null> {
+    private async buildAccountStatistics(user: AccountUserProfile): Promise<AccountStatisticsResponse['statistics']> {
+        const [gameStats, playerRating, leaderboardPlacement] = await Promise.all([
+            this.gameHistoryRepository.getPlayerProfileStatistics(user.id),
+            this.eloRepository.getPlayerRating(user.id),
+            this.eloRepository.getLeaderboardPlacement(user.id)
+        ]);
+
+        return {
+            totalGames: {
+                played: gameStats.totalGamesPlayed,
+                won: gameStats.totalGamesWon
+            },
+            rankedGames: {
+                played: gameStats.rankedGamesPlayed,
+                won: gameStats.rankedGamesWon
+            },
+            totalMovesMade: gameStats.totalMovesMade,
+            elo: leaderboardPlacement?.elo ?? playerRating?.elo ?? 1000,
+            worldRank: leaderboardPlacement?.rank ?? null
+        };
+    }
+
+    private async requireAdminUser(req: express.Request, res: express.Response): Promise<AccountUserProfile | null> {
         const user = await this.authService.getCurrentUser(req);
         if (!user) {
             res.status(401).json({ error: 'Sign in as an admin to view this page.' });

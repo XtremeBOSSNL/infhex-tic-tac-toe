@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import type { CreateSessionRequest } from '@ih3t/shared'
-import { Navigate, useNavigate, useSearchParams } from 'react-router'
+import { useNavigate, useSearchParams } from 'react-router'
 import LobbyScreen from '../components/LobbyScreen'
 import { hostGame, joinGame } from '../liveGameClient'
 import { useLiveGameStore } from '../liveGameStore'

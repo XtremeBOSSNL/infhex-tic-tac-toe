@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import React, { useEffect, useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import type { GameState, LobbyOptions, SessionParticipant, SessionParticipantRole, ShutdownState } from '@ih3t/shared'
 import { playTilePlacedSound } from '../soundEffects'
 import GameBoardCanvas from './game-screen/GameBoardCanvas'

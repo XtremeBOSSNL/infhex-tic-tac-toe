@@ -408,6 +408,21 @@ const zNormalizedUsername = z.string()
         message: 'Your username contains unsupported characters.'
     });
 
+export const zAccountStatistics = z.object({
+    totalGames: z.object({
+        played: z.number().int().nonnegative(),
+        won: z.number().int().nonnegative()
+    }),
+    rankedGames: z.object({
+        played: z.number().int().nonnegative(),
+        won: z.number().int().nonnegative()
+    }),
+    totalMovesMade: z.number().int().nonnegative(),
+    elo: z.number().int().nonnegative(),
+    worldRank: z.number().int().positive().nullable()
+});
+export type AccountStatistics = z.infer<typeof zAccountStatistics>;
+
 export const zAccountProfile = z.object({
     id: zIdentifier,
     username: z.string(),
@@ -421,6 +436,11 @@ export const zAccountResponse = z.object({
     user: zAccountProfile.nullable()
 });
 export type AccountResponse = z.infer<typeof zAccountResponse>;
+
+export const zAccountStatisticsResponse = z.object({
+    statistics: zAccountStatistics
+});
+export type AccountStatisticsResponse = z.infer<typeof zAccountStatisticsResponse>;
 
 export const zAdminStatGameBase = z.object({
     gameId: zIdentifier,

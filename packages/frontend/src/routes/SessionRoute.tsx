@@ -10,7 +10,6 @@ import WaitingScreen from '../components/WaitingScreen'
 import WinnerScreen from '../components/WinnerScreen'
 import {
   joinGame,
-  leaveGame,
   placeCell,
   requestRematch,
   returnToLobby,

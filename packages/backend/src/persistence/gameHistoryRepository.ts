@@ -96,6 +96,15 @@ export interface PlayerLeaderboardStats {
     winRatio: number;
 }
 
+export interface PlayerProfileStatistics {
+    profileId: string;
+    totalGamesPlayed: number;
+    totalGamesWon: number;
+    rankedGamesPlayed: number;
+    rankedGamesWon: number;
+    totalMovesMade: number;
+}
+
 const mongoDbName = process.env.MONGODB_DB_NAME ?? 'ih3t';
 const mongoCollectionName = process.env.MONGODB_GAME_HISTORY_COLLECTION ?? 'gameHistory';
 
@@ -402,6 +411,119 @@ export class GameHistoryRepository {
         return new Map(
             players.map((player) => [player.profileId, this.normalizePlayerLeaderboardStats(player)] as const)
         );
+    }
+
+    async getPlayerProfileStatistics(profileId: string): Promise<PlayerProfileStatistics> {
+        const normalizedProfileId = profileId.trim();
+        if (normalizedProfileId.length === 0) {
+            return this.createEmptyPlayerProfileStatistics(profileId);
+        }
+
+        const collection = await this.getCollection();
+        const [stats] = await collection.aggregate<Omit<PlayerProfileStatistics, 'profileId'>>([
+            {
+                $match: {
+                    finishedAt: {
+                        $ne: null
+                    },
+                    'players.profileId': normalizedProfileId
+                }
+            },
+            {
+                $set: {
+                    matchedPlayer: {
+                        $first: {
+                            $filter: {
+                                input: '$players',
+                                as: 'player',
+                                cond: {
+                                    $eq: ['$$player.profileId', normalizedProfileId]
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            {
+                $match: {
+                    'matchedPlayer.playerId': {
+                        $exists: true
+                    }
+                }
+            },
+            {
+                $project: {
+                    _id: 0,
+                    isRated: {
+                        $eq: ['$gameOptions.rated', true]
+                    },
+                    gameWon: {
+                        $cond: [
+                            { $eq: ['$gameResult.winningPlayerId', '$matchedPlayer.playerId'] },
+                            1,
+                            0
+                        ]
+                    },
+                    playerMoveCount: {
+                        $size: {
+                            $filter: {
+                                input: '$moves',
+                                as: 'move',
+                                cond: {
+                                    $eq: ['$$move.playerId', '$matchedPlayer.playerId']
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            {
+                $group: {
+                    _id: null,
+                    totalGamesPlayed: { $sum: 1 },
+                    totalGamesWon: { $sum: '$gameWon' },
+                    rankedGamesPlayed: {
+                        $sum: {
+                            $cond: ['$isRated', 1, 0]
+                        }
+                    },
+                    rankedGamesWon: {
+                        $sum: {
+                            $cond: [
+                                {
+                                    $and: [
+                                        '$isRated',
+                                        { $eq: ['$gameWon', 1] }
+                                    ]
+                                },
+                                1,
+                                0
+                            ]
+                        }
+                    },
+                    totalMovesMade: { $sum: '$playerMoveCount' }
+                }
+            },
+            {
+                $project: {
+                    _id: 0,
+                    totalGamesPlayed: 1,
+                    totalGamesWon: 1,
+                    rankedGamesPlayed: 1,
+                    rankedGamesWon: 1,
+                    totalMovesMade: 1
+                }
+            }
+        ]).toArray();
+
+        return {
+            profileId: normalizedProfileId,
+            totalGamesPlayed: stats?.totalGamesPlayed ?? 0,
+            totalGamesWon: stats?.totalGamesWon ?? 0,
+            rankedGamesPlayed: stats?.rankedGamesPlayed ?? 0,
+            rankedGamesWon: stats?.rankedGamesWon ?? 0,
+            totalMovesMade: stats?.totalMovesMade ?? 0
+        };
     }
 
     private async getCollection(): Promise<Collection<GameHistoryDocument>> {
@@ -766,6 +888,17 @@ export class GameHistoryRepository {
             gamesPlayed: player.gamesPlayed,
             gamesWon: player.gamesWon,
             winRatio: Number(player.winRatio.toFixed(4))
+        };
+    }
+
+    private createEmptyPlayerProfileStatistics(profileId: string): PlayerProfileStatistics {
+        return {
+            profileId,
+            totalGamesPlayed: 0,
+            totalGamesWon: 0,
+            rankedGamesPlayed: 0,
+            rankedGamesWon: 0,
+            totalMovesMade: 0
         };
     }
 

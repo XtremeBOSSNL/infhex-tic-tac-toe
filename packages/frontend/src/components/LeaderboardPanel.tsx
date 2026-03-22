@@ -175,7 +175,7 @@ export function LeaderboardSection({
   description?: string
   showSnapshot?: boolean
 }>) {
-  const isOnLeaderboard = leaderboard.ownPlacement && leaderboard.players.some(player => player.profileId === leaderboard.ownPlacement.profileId);
+  const isOnLeaderboard = leaderboard.ownPlacement && leaderboard.players.some(player => player.profileId === leaderboard.ownPlacement!.profileId);
 
   return (
     <section className="rounded-[1.75rem] border border-white/10 bg-white/6 p-6 shadow-[0_20px_80px_rgba(15,23,42,0.35)]">
