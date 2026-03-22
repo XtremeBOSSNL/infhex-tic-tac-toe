@@ -7,17 +7,15 @@ interface FinishedGameReviewLayoutProps {
 }
 
 function FinishedGameReviewLayout({
-  onRetry,
+  onRetry: _onRetry,
   children
 }: Readonly<FinishedGameReviewLayoutProps>) {
   return (
     <PageCorpus
       category={"Replay Viewer"}
       title={"Finished Match Review"}
-
-      onRefresh={onRetry}
     >
-      <div className="flex flex-col h-full sm:px-6 px-4 overflow-auto object-contain">
+      <div className="flex min-h-0 flex-1 flex-col px-4 pb-4 sm:px-6 sm:pb-6">
         {children}
       </div>
     </PageCorpus>
