@@ -661,8 +661,12 @@ export const zAccountStatistics = z.object({
     }),
     rankedGames: z.object({
         played: z.number().int().nonnegative(),
-        won: z.number().int().nonnegative()
+        won: z.number().int().nonnegative(),
+        currentWinStreak: z.number().int().nonnegative(),
+        longestWinStreak: z.number().int().nonnegative()
     }),
+    longestGamePlayedMs: z.number().int().nonnegative(),
+    longestGameByMoves: z.number().int().nonnegative(),
     totalMovesMade: z.number().int().nonnegative(),
     elo: z.number().int().nonnegative(),
     worldRank: z.number().int().positive().nullable()

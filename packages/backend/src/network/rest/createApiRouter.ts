@@ -416,8 +416,12 @@ export class ApiRouter {
             },
             rankedGames: {
                 played: gameStats.rankedGamesPlayed,
-                won: gameStats.rankedGamesWon
+                won: gameStats.rankedGamesWon,
+                currentWinStreak: gameStats.currentRankedWinStreak,
+                longestWinStreak: gameStats.longestRankedWinStreak
             },
+            longestGamePlayedMs: gameStats.longestGamePlayedMs,
+            longestGameByMoves: gameStats.longestGameByMoves,
             totalMovesMade: gameStats.totalMovesMade,
             elo: leaderboardPlacement?.elo ?? playerRating?.elo ?? 1000,
             worldRank: leaderboardPlacement?.rank ?? null

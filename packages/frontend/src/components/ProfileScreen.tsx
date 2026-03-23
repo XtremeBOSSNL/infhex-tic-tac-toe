@@ -1,4 +1,5 @@
 import type { AccountProfile, AccountStatistics } from '@ih3t/shared'
+import type { ReactNode } from 'react'
 import { toast } from 'react-toastify'
 import { signInWithDiscord } from '../authClient'
 import PageCorpus from './PageCorpus'
@@ -20,6 +21,27 @@ function formatWinSummary(won: number, played: number) {
 
   const winRate = Math.round((won / played) * 100)
   return `${won} won · ${winRate}% win rate`
+}
+
+function formatStreakDetail(streak: number) {
+  return streak === 1 ? '1 consecutive rated win.' : `${streak} consecutive rated wins.`
+}
+
+function formatDuration(durationMs: number) {
+  const totalSeconds = Math.max(0, Math.round(durationMs / 1000))
+  const hours = Math.floor(totalSeconds / 3_600)
+  const minutes = Math.floor((totalSeconds % 3_600) / 60)
+  const seconds = totalSeconds % 60
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m ${seconds}s`
+  }
+
+  if (minutes > 0) {
+    return `${minutes}m ${seconds}s`
+  }
+
+  return `${seconds}s`
 }
 
 interface ProfileScreenProps {
@@ -58,11 +80,40 @@ interface SecondaryStatCardProps {
 
 function SecondaryStatCard({ label, value, detail }: Readonly<SecondaryStatCardProps>) {
   return (
-    <div className="rounded-[1.25rem] border border-white/10 bg-slate-950/45 p-4">
+    <div className="rounded-[1.25rem] border border-white/10 bg-slate-950/55 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.18)]">
       <div className="text-xs uppercase tracking-[0.22em] text-slate-400">{label}</div>
       <div className="mt-2 text-2xl font-black uppercase tracking-[0.05em] text-white">{value}</div>
       <div className="mt-2 text-sm text-slate-300">{detail}</div>
     </div>
+  )
+}
+
+interface StatisticsGroupProps {
+  eyebrow: string
+  title: string
+  description: string
+  accentClassName: string
+  cardGridClassName: string
+  children: ReactNode
+}
+
+function StatisticsGroup({
+  eyebrow,
+  title,
+  description,
+  accentClassName,
+  cardGridClassName,
+  children
+}: Readonly<StatisticsGroupProps>) {
+  return (
+    <section className="rounded-[1.5rem] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.72),rgba(15,23,42,0.5))] p-5 shadow-[0_24px_80px_rgba(15,23,42,0.28)]">
+      <div className={`text-xs uppercase tracking-[0.28em] ${accentClassName}`}>{eyebrow}</div>
+      <h3 className="mt-3 text-xl font-black uppercase tracking-[0.08em] text-white">{title}</h3>
+      <p className="mt-2 text-sm leading-6 text-slate-300">{description}</p>
+      <div className={`mt-5 grid gap-4 ${cardGridClassName}`}>
+        {children}
+      </div>
+    </section>
   )
 }
 
@@ -211,7 +262,7 @@ function ProfileScreen({
               <div className="text-xs uppercase tracking-[0.3em] text-sky-200/80">Match Performance</div>
               <h2 className="mt-3 text-2xl font-black uppercase tracking-[0.08em] text-white">Game Statistics</h2>
               <p className="mt-3 text-sm leading-6 text-slate-300">
-                A focused breakdown of finished-game performance across all games and ranked play.
+                Your profile stats are grouped by overall activity, rated performance, and standout personal records.
               </p>
 
               {isStatisticsLoading ? (
@@ -223,22 +274,68 @@ function ProfileScreen({
                   {statisticsErrorMessage}
                 </div>
               ) : statistics ? (
-                <div className="mt-6 grid gap-4 md:grid-cols-3">
-                  <SecondaryStatCard
-                    label="Total Games"
-                    value={statistics.totalGames.played}
-                    detail={formatWinSummary(statistics.totalGames.won, statistics.totalGames.played)}
-                  />
-                  <SecondaryStatCard
-                    label="Ranked Games"
-                    value={statistics.rankedGames.played}
-                    detail={formatWinSummary(statistics.rankedGames.won, statistics.rankedGames.played)}
-                  />
-                  <SecondaryStatCard
-                    label="Total Moves"
-                    value={statistics.totalMovesMade}
-                    detail="Moves recorded in your finished matches."
-                  />
+                <div className="mt-6 grid gap-4 xl:grid-cols-[1.05fr,1.2fr,0.95fr]">
+                  <StatisticsGroup
+                    eyebrow="Overview"
+                    title="Overall Play"
+                    description="All finished games, regardless of queue type, along with the volume of moves you've logged."
+                    accentClassName="text-sky-200/85"
+                    cardGridClassName="sm:grid-cols-2 xl:grid-cols-1"
+                  >
+                    <SecondaryStatCard
+                      label="Total Games"
+                      value={statistics.totalGames.played}
+                      detail={formatWinSummary(statistics.totalGames.won, statistics.totalGames.played)}
+                    />
+                    <SecondaryStatCard
+                      label="Total Moves"
+                      value={statistics.totalMovesMade}
+                      detail="Moves recorded across all of your finished matches."
+                    />
+                  </StatisticsGroup>
+
+                  <StatisticsGroup
+                    eyebrow="Competitive"
+                    title="Ranked Performance"
+                    description="Rated-game results and momentum, grouped together so competitive progress is easier to scan."
+                    accentClassName="text-amber-200/85"
+                    cardGridClassName="sm:grid-cols-3 xl:grid-cols-1"
+                  >
+                    <SecondaryStatCard
+                      label="Ranked Games"
+                      value={statistics.rankedGames.played}
+                      detail={formatWinSummary(statistics.rankedGames.won, statistics.rankedGames.played)}
+                    />
+                    <SecondaryStatCard
+                      label="Current Win Streak"
+                      value={statistics.rankedGames.currentWinStreak}
+                      detail={"Current amount of games undefeaded"}
+                    />
+                    <SecondaryStatCard
+                      label="Longest Win Streak"
+                      value={statistics.rankedGames.longestWinStreak}
+                      detail={"Longest series of undefeaded games"}
+                    />
+                  </StatisticsGroup>
+
+                  <StatisticsGroup
+                    eyebrow="Records"
+                    title="Personal Bests"
+                    description="Your longest finished matches measured by time and by move count."
+                    accentClassName="text-emerald-200/85"
+                    cardGridClassName="sm:grid-cols-2 xl:grid-cols-1"
+                  >
+                    <SecondaryStatCard
+                      label="Longest Game"
+                      value={formatDuration(statistics.longestGamePlayedMs)}
+                      detail="Your longest finished game by duration."
+                    />
+                    <SecondaryStatCard
+                      label="Longest By Moves"
+                      value={statistics.longestGameByMoves}
+                      detail="Your longest finished game by move count."
+                    />
+                  </StatisticsGroup>
                 </div>
               ) : (
                 <div className="mt-6 rounded-[1.25rem] border border-white/10 bg-slate-950/45 px-4 py-8 text-center text-sm text-slate-300">
