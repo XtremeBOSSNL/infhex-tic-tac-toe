@@ -25,7 +25,7 @@ interface FrontendSsrDependencies {
   authRepository: AuthRepository
   authService: AuthService
   eloRepository: EloRepository
-  frontendDistPath: string
+  ssrDistPath: string
   gameHistoryRepository: GameHistoryRepository
   leaderboardService: LeaderboardService
   sandboxPositionService: SandboxPositionService
@@ -207,7 +207,7 @@ export class FrontendSsrRenderer {
     }
 
     this.frontendServerRendererPromise = import(
-      pathToFileURL(join(this.dependencies.frontendDistPath, 'server', 'entry-server.js')).href
+      pathToFileURL(join(this.dependencies.ssrDistPath, 'entry-server.js')).href
     ).then((module: unknown) => {
       const renderApp = (module as Partial<RenderAppModule>).renderApp
       if (typeof renderApp !== 'function') {

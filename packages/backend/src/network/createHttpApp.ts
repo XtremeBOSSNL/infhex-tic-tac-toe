@@ -221,14 +221,13 @@ export class HttpApplication {
         const app = express();
         const logger = rootLogger.child({ component: 'http-application' });
         const corsOptions = corsConfiguration.options;
-        const frontendDistPath = serverConfig.frontendDistPath;
         this.logger = logger;
-        this.frontendDistPath = frontendDistPath;
+        this.frontendDistPath = `${serverConfig.frontendDistPath}/client`;
         this.frontendSsrRenderer = new FrontendSsrRenderer({
             authRepository: this.authRepository,
             authService,
             eloRepository,
-            frontendDistPath,
+            ssrDistPath: `${serverConfig.frontendDistPath}/ssr`,
             gameHistoryRepository: this.gameHistoryRepository,
             leaderboardService,
             sandboxPositionService: this.sandboxPositionService,
@@ -287,8 +286,8 @@ export class HttpApplication {
             });
         });
 
-        if (process.env.NODE_ENV === 'production' && existsSync(frontendDistPath)) {
-            app.use(express.static(frontendDistPath, { index: false }));
+        if (process.env.NODE_ENV === 'production' && existsSync(this.frontendDistPath)) {
+            app.use(express.static(this.frontendDistPath, { index: false }));
             app.get(/^(?!\/api(?:\/|$)|\/socket\.io(?:\/|$)).*/, async (req, res) => {
                 const archiveRedirectUrl = this.resolveArchiveRedirectUrl(req);
                 if (archiveRedirectUrl) {
