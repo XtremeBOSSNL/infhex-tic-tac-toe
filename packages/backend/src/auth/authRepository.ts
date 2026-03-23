@@ -356,9 +356,9 @@ export class AuthRepository implements Adapter {
             return null;
         }
 
-        const document = await collection.findOne({ _id: objectId });
+        const document = await collection.findOne({ _id: objectId }, { projection: { preferences: 1 } });
         return document
-            ? this.normalizeAccountPreferences(collection)
+            ? this.normalizeAccountPreferences(document.preferences)
             : null;
     }
 
