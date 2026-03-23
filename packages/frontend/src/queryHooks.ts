@@ -2,6 +2,7 @@ import type {
   AccountPreferencesResponse,
   AccountResponse,
   AccountStatisticsResponse,
+  PublicAccountResponse,
   Leaderboard,
   AdminStatsResponse,
   FinishedGameRecord,
@@ -35,12 +36,20 @@ async function fetchAccount() {
   return await fetchJson<AccountResponse>('/api/account')
 }
 
+async function fetchPublicAccount(profileId: string) {
+  return await fetchJson<PublicAccountResponse>(`/api/profiles/${encodeURIComponent(profileId)}`)
+}
+
 async function fetchAccountPreferences() {
   return await fetchJson<AccountPreferencesResponse>('/api/account/preferences')
 }
 
 async function fetchAccountStatistics() {
   return await fetchJson<AccountStatisticsResponse>('/api/account/statistics')
+}
+
+async function fetchPublicAccountStatistics(profileId: string) {
+  return await fetchJson<AccountStatisticsResponse>(`/api/profiles/${encodeURIComponent(profileId)}/statistics`)
 }
 
 async function fetchAdminStats(timezoneOffsetMinutes: number) {
@@ -101,6 +110,22 @@ export function useQueryAccount(options?: { enabled?: boolean }) {
   })
 }
 
+export function useQueryPublicAccount(profileId: string | null, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: profileId ? queryKeys.publicAccount(profileId) : ['account', 'public', 'unknown'],
+    queryFn: () => {
+      if (!profileId) {
+        throw new Error('Missing profile id.')
+      }
+
+      return fetchPublicAccount(profileId)
+    },
+    enabled: Boolean(profileId) && options?.enabled,
+
+    staleTime: 10 * 60 * 1000
+  })
+}
+
 export function useQueryAccountPreferences(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: queryKeys.accountPreferences,
@@ -116,6 +141,22 @@ export function useQueryAccountStatistics(options?: { enabled?: boolean }) {
     queryKey: queryKeys.accountStatistics,
     queryFn: fetchAccountStatistics,
     enabled: options?.enabled,
+
+    staleTime: 60 * 1000
+  })
+}
+
+export function useQueryPublicAccountStatistics(profileId: string | null, options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: profileId ? queryKeys.publicAccountStatistics(profileId) : ['account', 'public', 'unknown', 'statistics'],
+    queryFn: () => {
+      if (!profileId) {
+        throw new Error('Missing profile id.')
+      }
+
+      return fetchPublicAccountStatistics(profileId)
+    },
+    enabled: Boolean(profileId) && options?.enabled,
 
     staleTime: 60 * 1000
   })

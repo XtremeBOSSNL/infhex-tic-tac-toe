@@ -5,8 +5,10 @@ export type FinishedGamesArchiveView = 'all' | 'mine'
 
 export const queryKeys = {
   account: ['account'] as const,
+  publicAccount: (profileId: string) => ['account', 'public', profileId] as const,
   accountPreferences: ['account', 'preferences'] as const,
   accountStatistics: ['account', 'statistics'] as const,
+  publicAccountStatistics: (profileId: string) => ['account', 'public', profileId, 'statistics'] as const,
   adminServerSettings: ['admin', 'server-settings'] as const,
   adminStats: (timezoneOffsetMinutes: number) => ['admin', 'stats', timezoneOffsetMinutes] as const,
   leaderboard: ['leaderboard'] as const,

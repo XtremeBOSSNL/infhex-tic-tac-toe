@@ -694,10 +694,20 @@ export const zAccountProfile = z.object({
 });
 export type AccountProfile = z.infer<typeof zAccountProfile>;
 
+export const zPublicAccountProfile = zAccountProfile.omit({
+    email: true
+});
+export type PublicAccountProfile = z.infer<typeof zPublicAccountProfile>;
+
 export const zAccountResponse = z.object({
     user: zAccountProfile.nullable()
 });
 export type AccountResponse = z.infer<typeof zAccountResponse>;
+
+export const zPublicAccountResponse = z.object({
+    user: zPublicAccountProfile.nullable()
+});
+export type PublicAccountResponse = z.infer<typeof zPublicAccountResponse>;
 
 export const zAccountStatisticsResponse = z.object({
     statistics: zAccountStatistics

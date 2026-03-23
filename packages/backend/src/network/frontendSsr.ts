@@ -2,23 +2,29 @@ import { dehydrate, QueryClient } from '@tanstack/react-query'
 import type {
   AccountPreferencesResponse,
   AccountResponse,
+  AccountStatisticsResponse,
   FinishedGameRecord,
   FinishedGamesPage,
   Leaderboard,
   LobbyInfo,
+  PublicAccountResponse,
   SandboxPositionResponse
 } from '@ih3t/shared'
 import type express from 'express'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import type { AuthRepository } from '../auth/authRepository'
 import type { AuthService } from '../auth/authService'
+import type { EloRepository } from '../elo/eloRepository'
 import type { LeaderboardService } from '../leaderboard/leaderboardService'
 import type { GameHistoryRepository } from '../persistence/gameHistoryRepository'
 import type { SandboxPositionService } from '../sandbox/sandboxPositionService'
 import type { SessionManager } from '../session/sessionManager'
 
 interface FrontendSsrDependencies {
+  authRepository: AuthRepository
   authService: AuthService
+  eloRepository: EloRepository
   frontendDistPath: string
   gameHistoryRepository: GameHistoryRepository
   leaderboardService: LeaderboardService
@@ -127,6 +133,24 @@ export class FrontendSsrRenderer {
       )
     }
 
+    const publicProfileMatch = path.match(/^\/profile\/([^/]+)$/)
+    if (publicProfileMatch) {
+      const profileId = decodeURIComponent(publicProfileMatch[1])
+      const profile = await this.dependencies.authRepository.getUserProfileById(profileId)
+      if (profile) {
+        const { email: _email, ...publicProfile } = profile
+        const publicAccountResponse: PublicAccountResponse = {
+          user: publicProfile
+        }
+        const accountStatisticsResponse: AccountStatisticsResponse = {
+          statistics: await this.buildAccountStatistics(profileId)
+        }
+
+        queryClient.setQueryData(['account', 'public', profileId], publicAccountResponse)
+        queryClient.setQueryData(['account', 'public', profileId, 'statistics'], accountStatisticsResponse)
+      }
+    }
+
     if (path === '/games' || path === '/account/games') {
       const archiveView = path.startsWith('/account/games') ? 'mine' : 'all'
       const page = parsePositiveInteger(requestUrl.searchParams.get('page')) ?? 1
@@ -197,5 +221,31 @@ export class FrontendSsrRenderer {
     })
 
     return this.frontendServerRendererPromise
+  }
+
+  private async buildAccountStatistics(profileId: string): Promise<AccountStatisticsResponse['statistics']> {
+    const [gameStats, playerRating, leaderboardPlacement] = await Promise.all([
+      this.dependencies.gameHistoryRepository.getPlayerProfileStatistics(profileId),
+      this.dependencies.eloRepository.getPlayerRating(profileId),
+      this.dependencies.eloRepository.getLeaderboardPlacement(profileId)
+    ])
+
+    return {
+      totalGames: {
+        played: gameStats.totalGamesPlayed,
+        won: gameStats.totalGamesWon
+      },
+      rankedGames: {
+        played: gameStats.rankedGamesPlayed,
+        won: gameStats.rankedGamesWon,
+        currentWinStreak: gameStats.currentRankedWinStreak,
+        longestWinStreak: gameStats.longestRankedWinStreak
+      },
+      longestGamePlayedMs: gameStats.longestGamePlayedMs,
+      longestGameByMoves: gameStats.longestGameByMoves,
+      totalMovesMade: gameStats.totalMovesMade,
+      elo: leaderboardPlacement?.elo ?? playerRating?.elo ?? 1000,
+      worldRank: leaderboardPlacement?.rank ?? null
+    }
   }
 }

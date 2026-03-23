@@ -4,6 +4,7 @@ import { z } from 'zod';
 import {
     type AccountPreferencesResponse,
     type AccountResponse,
+    type PublicAccountResponse,
     type AccountStatisticsResponse,
     type AdminServerSettingsResponse,
     type AdminStatsResponse,
@@ -107,7 +108,33 @@ export class ApiRouter {
             }
 
             const response: AccountStatisticsResponse = {
-                statistics: await this.buildAccountStatistics(user)
+                statistics: await this.buildAccountStatistics(user.id)
+            };
+            res.json(response);
+        });
+
+        router.get('/profiles/:profileId', async (req, res) => {
+            const user = await this.authRepository.getUserProfileById(req.params.profileId);
+            if (!user) {
+                res.status(404).json({ error: 'Profile not found.' });
+                return;
+            }
+
+            const response: PublicAccountResponse = {
+                user: this.toPublicAccountProfile(user)
+            };
+            res.json(response);
+        });
+
+        router.get('/profiles/:profileId/statistics', async (req, res) => {
+            const user = await this.authRepository.getUserProfileById(req.params.profileId);
+            if (!user) {
+                res.status(404).json({ error: 'Profile not found.' });
+                return;
+            }
+
+            const response: AccountStatisticsResponse = {
+                statistics: await this.buildAccountStatistics(user.id)
             };
             res.json(response);
         });
@@ -402,11 +429,11 @@ export class ApiRouter {
         return zAdminUpdateServerSettingsRequest.parse(body ?? {}).settings;
     }
 
-    private async buildAccountStatistics(user: AccountUserProfile): Promise<AccountStatisticsResponse['statistics']> {
+    private async buildAccountStatistics(profileId: string): Promise<AccountStatisticsResponse['statistics']> {
         const [gameStats, playerRating, leaderboardPlacement] = await Promise.all([
-            this.gameHistoryRepository.getPlayerProfileStatistics(user.id),
-            this.eloRepository.getPlayerRating(user.id),
-            this.eloRepository.getLeaderboardPlacement(user.id)
+            this.gameHistoryRepository.getPlayerProfileStatistics(profileId),
+            this.eloRepository.getPlayerRating(profileId),
+            this.eloRepository.getLeaderboardPlacement(profileId)
         ]);
 
         return {
@@ -426,6 +453,11 @@ export class ApiRouter {
             elo: leaderboardPlacement?.elo ?? playerRating?.elo ?? 1000,
             worldRank: leaderboardPlacement?.rank ?? null
         };
+    }
+
+    private toPublicAccountProfile(user: AccountUserProfile): PublicAccountResponse['user'] {
+        const { email: _email, ...publicProfile } = user;
+        return publicProfile;
     }
 
     private buildAdminServerSettingsResponse(): AdminServerSettingsResponse {

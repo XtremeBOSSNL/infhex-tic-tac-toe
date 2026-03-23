@@ -1,4 +1,4 @@
-import type { AccountProfile, AccountStatistics } from '@ih3t/shared'
+import type { AccountStatistics, PublicAccountProfile } from '@ih3t/shared'
 import type { ReactNode } from 'react'
 import { toast } from 'react-toastify'
 import { signInWithDiscord } from '../authClient'
@@ -45,12 +45,13 @@ function formatDuration(durationMs: number) {
 }
 
 interface ProfileScreenProps {
-  account: AccountProfile | null
+  account: PublicAccountProfile | null
   statistics: AccountStatistics | null
   isLoading: boolean
   isStatisticsLoading: boolean
   errorMessage: string | null
   statisticsErrorMessage: string | null
+  isPublicView: boolean
 }
 
 interface PrimaryStatCardProps {
@@ -117,11 +118,11 @@ function StatisticsGroup({
   )
 }
 
-function StatisticsLoadingState() {
+function StatisticsLoadingState({ message = 'Loading your statistics...' }: Readonly<{ message?: string }>) {
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <div className="rounded-[1.5rem] border border-white/10 bg-slate-950/45 px-5 py-10 text-center text-sm text-slate-300 lg:col-span-2">
-        Loading your statistics...
+        {message}
       </div>
     </div>
   )
@@ -135,10 +136,10 @@ function StatisticsErrorState({ message }: Readonly<{ message: string }>) {
   )
 }
 
-function StatisticsEmptyState() {
+function StatisticsEmptyState({ message = 'Statistics will appear here once your profile data is ready.' }: Readonly<{ message?: string }>) {
   return (
     <div className="rounded-[1.5rem] border border-white/10 bg-slate-950/45 px-5 py-10 text-center text-sm text-slate-300">
-      Statistics will appear here once your profile data is ready.
+      {message}
     </div>
   )
 }
@@ -149,7 +150,8 @@ function ProfileScreen({
   isLoading,
   isStatisticsLoading,
   errorMessage,
-  statisticsErrorMessage
+  statisticsErrorMessage,
+  isPublicView
 }: Readonly<ProfileScreenProps>) {
   const handleSignIn = async () => {
     try {
@@ -160,37 +162,63 @@ function ProfileScreen({
     }
   }
 
+  const isMissingPublicProfile = isPublicView && errorMessage === 'Profile not found.'
+
   return (
     <PageCorpus
-      category="Profile"
-      title="Your Account"
-      description="Account details and competitive standing for your Infinity Hexagonal Tic-Tac-Toe profile."
+      category={isPublicView ? 'Profile' : 'Account'}
+      title={isPublicView ? (account?.username ?? 'Player Profile') : 'Your Account'}
+      description={isPublicView
+        ? 'Public profile details and competitive standing for this Infinity Hexagonal Tic-Tac-Toe player.'
+        : 'Account details and competitive standing for your Infinity Hexagonal Tic-Tac-Toe profile.'}
     >
       <div className="min-h-0 flex-1 px-4 pb-4 sm:px-6 sm:pb-6">
         {isLoading ? (
           <div className="flex h-full items-center justify-center rounded-[1.75rem] border border-white/10 bg-white/6 px-6 py-10 text-center text-slate-300">
-            Loading your account...
+            {isPublicView ? 'Loading profile...' : 'Loading your account...'}
+          </div>
+        ) : isMissingPublicProfile ? (
+          <div className="flex h-full items-center justify-center">
+            <section className="w-full max-w-2xl rounded-[1.75rem] border border-white/10 bg-white/6 p-6 text-center shadow-[0_20px_80px_rgba(15,23,42,0.35)] sm:p-8">
+              <div className="text-xs uppercase tracking-[0.3em] text-sky-100/90">Profile</div>
+              <h2 className="mt-4 text-3xl font-black uppercase tracking-[0.08em] text-white">Profile Not Found</h2>
+              <p className="mt-4 text-sm leading-6 text-slate-300 sm:text-base">
+                This player profile is unavailable or no longer exists.
+              </p>
+            </section>
           </div>
         ) : errorMessage ? (
           <div className="rounded-[1.5rem] border border-rose-300/30 bg-rose-500/10 px-5 py-4 text-sm text-rose-100">
             {errorMessage}
           </div>
         ) : !account ? (
-          <div className="flex h-full items-center justify-center">
-            <section className="w-full max-w-2xl rounded-[1.75rem] border border-amber-300/20 bg-amber-300/10 p-6 text-center shadow-[0_20px_80px_rgba(15,23,42,0.35)] sm:p-8">
-              <div className="text-xs uppercase tracking-[0.3em] text-amber-100/90">Profile Access</div>
-              <h2 className="mt-4 text-3xl font-black uppercase tracking-[0.08em] text-white">Sign In Required</h2>
-              <p className="mt-4 text-sm leading-6 text-amber-50/85 sm:text-base">
-                Sign in with Discord to view your account details and competitive standing.
-              </p>
-              <button
-                onClick={() => void handleSignIn()}
-                className="mt-6 rounded-full bg-[#5865F2] px-5 py-3 text-sm font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-[#6f7cff]"
-              >
-                Sign In With Discord
-              </button>
-            </section>
-          </div>
+          isPublicView ? (
+            <div className="flex h-full items-center justify-center">
+              <section className="w-full max-w-2xl rounded-[1.75rem] border border-white/10 bg-white/6 p-6 text-center shadow-[0_20px_80px_rgba(15,23,42,0.35)] sm:p-8">
+                <div className="text-xs uppercase tracking-[0.3em] text-sky-100/90">Profile</div>
+                <h2 className="mt-4 text-3xl font-black uppercase tracking-[0.08em] text-white">Profile Not Found</h2>
+                <p className="mt-4 text-sm leading-6 text-slate-300 sm:text-base">
+                  This player profile is unavailable or no longer exists.
+                </p>
+              </section>
+            </div>
+          ) : (
+            <div className="flex h-full items-center justify-center">
+              <section className="w-full max-w-2xl rounded-[1.75rem] border border-amber-300/20 bg-amber-300/10 p-6 text-center shadow-[0_20px_80px_rgba(15,23,42,0.35)] sm:p-8">
+                <div className="text-xs uppercase tracking-[0.3em] text-amber-100/90">Profile Access</div>
+                <h2 className="mt-4 text-3xl font-black uppercase tracking-[0.08em] text-white">Sign In Required</h2>
+                <p className="mt-4 text-sm leading-6 text-amber-50/85 sm:text-base">
+                  Sign in with Discord to view your account details and competitive standing.
+                </p>
+                <button
+                  onClick={() => void handleSignIn()}
+                  className="mt-6 rounded-full bg-[#5865F2] px-5 py-3 text-sm font-semibold uppercase tracking-[0.16em] text-white transition hover:-translate-y-0.5 hover:bg-[#6f7cff]"
+                >
+                  Sign In With Discord
+                </button>
+              </section>
+            </div>
+          )
         ) : (
           <div className="space-y-6">
             <section className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.18),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(14,165,233,0.16),transparent_30%),rgba(255,255,255,0.06)] p-6 shadow-[0_24px_100px_rgba(15,23,42,0.4)] sm:p-8">
@@ -225,7 +253,9 @@ function ProfileScreen({
                       </h2>
 
                       <p className="mt-3 max-w-xl text-sm leading-6 text-slate-300 sm:text-base">
-                        Your profile combines identity, match performance, and current ranking in one place, with competitive status leading the page.
+                        {isPublicView
+                          ? 'This public profile combines identity, match performance, and current ranking in one place.'
+                          : 'Your profile combines identity, match performance, and current ranking in one place, with competitive status leading the page.'}
                       </p>
                     </div>
                   </div>
@@ -233,7 +263,7 @@ function ProfileScreen({
 
                 <div>
                   {isStatisticsLoading ? (
-                    <StatisticsLoadingState />
+                    <StatisticsLoadingState message={isPublicView ? 'Loading profile statistics...' : 'Loading your statistics...'} />
                   ) : statisticsErrorMessage ? (
                     <StatisticsErrorState message={statisticsErrorMessage} />
                   ) : statistics ? (
@@ -252,22 +282,18 @@ function ProfileScreen({
                       />
                     </div>
                   ) : (
-                    <StatisticsEmptyState />
+                    <StatisticsEmptyState message={isPublicView
+                      ? 'Statistics will appear here once this profile has competitive data ready.'
+                      : 'Statistics will appear here once your profile data is ready.'} />
                   )}
                 </div>
               </div>
             </section>
 
-            <section className="rounded-[1.75rem] border border-white/10 bg-white/6 p-6 shadow-[0_20px_80px_rgba(15,23,42,0.35)]">
-              <div className="text-xs uppercase tracking-[0.3em] text-sky-200/80">Match Performance</div>
-              <h2 className="mt-3 text-2xl font-black uppercase tracking-[0.08em] text-white">Game Statistics</h2>
-              <p className="mt-3 text-sm leading-6 text-slate-300">
-                Your profile stats are grouped by overall activity, rated performance, and standout personal records.
-              </p>
-
+            <section className="">
               {isStatisticsLoading ? (
                 <div className="mt-6 rounded-[1.25rem] border border-white/10 bg-slate-950/45 px-4 py-8 text-center text-sm text-slate-300">
-                  Loading your statistics...
+                  {isPublicView ? 'Loading profile statistics...' : 'Loading your statistics...'}
                 </div>
               ) : statisticsErrorMessage ? (
                 <div className="mt-6 rounded-[1.25rem] border border-rose-300/30 bg-rose-500/10 px-4 py-4 text-sm text-rose-100">
@@ -309,12 +335,12 @@ function ProfileScreen({
                     <SecondaryStatCard
                       label="Current Win Streak"
                       value={statistics.rankedGames.currentWinStreak}
-                      detail={"Current amount of games undefeaded"}
+                      detail={"Current number of unbeaten rated games"}
                     />
                     <SecondaryStatCard
                       label="Longest Win Streak"
                       value={statistics.rankedGames.longestWinStreak}
-                      detail={"Longest series of undefeaded games"}
+                      detail={"Longest streak of unbeaten rated games"}
                     />
                   </StatisticsGroup>
 
