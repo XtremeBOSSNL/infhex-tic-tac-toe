@@ -1,10 +1,12 @@
-import { createEmptyGameState, type BoardState, type CellOccupant, type FinishedGameRecord } from '@ih3t/shared'
+import { createEmptyGameState, type BoardState, type CellOccupant, type FinishedGameRecord, type SandboxGamePosition } from '@ih3t/shared'
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router'
 import GameBoardCanvas from '../game-screen/GameBoardCanvas'
 import useGameBoard from '../game-screen/useGameBoard'
 import { getPlayerLabel, getPlayerTileColor } from '../game-screen/gameBoardUtils'
 import { formatTimeControl } from '../../lobbyOptions'
 import FinishedGameReviewLayout from './FinishedGameReviewLayout'
+import type { SandboxRouteInitialPosition, SandboxRouteState } from '../../routes/sandboxRouteState'
 
 interface FinishedGameReplayViewProps {
   game: FinishedGameRecord
@@ -119,11 +121,47 @@ function buildReplayBoardState(game: FinishedGameRecord, visibleMoveCount: numbe
   }
 }
 
+function buildReplaySandboxPosition(game: FinishedGameRecord, visibleMoveCount: number): SandboxRouteInitialPosition | null {
+  const firstPlayer = game.players[0]?.playerId
+  const secondPlayer = game.players[1]?.playerId
+  if (!firstPlayer || !secondPlayer) {
+    return null
+  }
+
+  const visibleMoves = game.moves.slice(0, visibleMoveCount)
+  const gamePosition: SandboxGamePosition = visibleMoves.length === 0
+    ? {
+      cells: [],
+      currentTurnPlayer: 'player-1',
+      placementsRemaining: 1
+    }
+    : {
+      cells: visibleMoves.map((move, index) => ({
+        x: move.x,
+        y: move.y,
+        player: move.playerId === firstPlayer ? 'player-1' : 'player-2',
+        moveId: index + 1
+      })),
+      currentTurnPlayer: Math.floor((visibleMoves.length - 1) / 2) % 2 === 0 ? 'player-2' : 'player-1',
+      placementsRemaining: 2 - ((visibleMoves.length - 1) % 2)
+    }
+
+  const moveLabel = visibleMoveCount === 0
+    ? 'Opening Position'
+    : `Replay Move ${visibleMoveCount}/${game.moves.length}`
+
+  return {
+    name: `${getPlayerLabel(game.players, firstPlayer)} vs ${getPlayerLabel(game.players, secondPlayer)} - ${moveLabel}`,
+    gamePosition
+  }
+}
+
 function FinishedGameReplayView({
   game,
   showTilePieceMarkers,
   onRetry
 }: Readonly<FinishedGameReplayViewProps>) {
+  const navigate = useNavigate()
   const [visibleMoveCount, setVisibleMoveCount] = useState(game.moves.length)
   const [isAutoPlaying, setIsAutoPlaying] = useState(false)
 
@@ -157,6 +195,10 @@ function FinishedGameReplayView({
   const activeMove = visibleMoveCount > 0
     ? game.moves[visibleMoveCount - 1]
     : null
+  const replaySandboxPosition = useMemo(
+    () => buildReplaySandboxPosition(game, visibleMoveCount),
+    [game, visibleMoveCount]
+  )
   const gameResult = game.gameResult ?? null
   const highlightedCells = useMemo(
     () => activeMove ? [{ x: activeMove.x, y: activeMove.y }] : [],
@@ -203,6 +245,23 @@ function FinishedGameReplayView({
                 </div>
 
                 <div className="flex flex-wrap justify-end gap-2">
+                  <button
+                    onClick={() => {
+                      if (!replaySandboxPosition) {
+                        return
+                      }
+
+                      void navigate('/sandbox', {
+                        state: {
+                          initialPosition: replaySandboxPosition
+                        } satisfies SandboxRouteState
+                      })
+                    }}
+                    aria-label="Explore this position in sandbox mode"
+                    className="inline-flex items-center justify-center rounded-full border border-white/15 bg-slate-950/75 px-2.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-white transition hover:bg-slate-900 sm:px-4 sm:py-2 sm:text-xs sm:tracking-[0.18em]"
+                  >
+                    Explore In Sandbox
+                  </button>
                   <button
                     onClick={resetView}
                     aria-label="Reset board view"

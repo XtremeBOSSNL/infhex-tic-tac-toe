@@ -12,7 +12,7 @@ import {
 } from '@ih3t/shared'
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router'
+import { useLocation, useNavigate, useParams } from 'react-router'
 import { toast } from 'react-toastify'
 import { fetchJson } from '../apiClient'
 import GameBoardCanvas from '../components/game-screen/GameBoardCanvas'
@@ -24,6 +24,7 @@ import SandboxTurnIndicator from '../components/sandbox/SandboxTurnIndicator'
 import SandboxWelcomeModal from '../components/sandbox/SandboxWelcomeModal'
 import SandboxWinnerBanner from '../components/sandbox/SandboxWinnerBanner'
 import { fetchSandboxPosition, queryKeys, useQueryAccount, useQuerySandboxPosition } from '../queryHooks'
+import type { SandboxRouteState } from './sandboxRouteState'
 import { playTilePlacedSound } from '../soundEffects'
 
 interface SandboxSnapshot {
@@ -149,6 +150,7 @@ function createSandboxSnapshot(gameState: GameState, gameHistory: readonly GameS
 }
 
 function SandboxRoute() {
+  const location = useLocation()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { positionId: routePositionId } = useParams<{ positionId?: string }>()
@@ -171,7 +173,9 @@ function SandboxRoute() {
   const previousCellCountRef = useRef(gameState.cells.length)
   const lastLoadedPositionIdRef = useRef<string | null>(null)
   const lastInvalidRoutePositionIdRef = useRef<string | null>(null)
+  const lastAppliedLocationKeyRef = useRef<string | null>(null)
   const normalizedRoutePositionId = normalizeSandboxPositionId(routePositionId)
+  const routeInitialPosition = (location.state as SandboxRouteState | null)?.initialPosition ?? null
 
   const initialBoardState = loadedSnapshot?.gameState ?? cleanBoardStateRef.current
   const initialBoardStateKey = getSandboxPositionKey(initialBoardState)
@@ -209,12 +213,12 @@ function SandboxRoute() {
     onPlaceCell: winnerId === null ? handlePlaceCell : undefined
   })
 
-  function applyLoadedSandboxPosition(response: SandboxPositionResponse) {
-    const { gameState: nextGameState, gameHistory: nextGameHistory } = restoreSandboxPosition(response.gamePosition)
-    const nextLoadedSnapshot = createSandboxSnapshot(nextGameState, nextGameHistory, response.name)
+  function applySandboxPosition(positionName: string, gamePosition: SandboxGamePosition, positionId: string | null) {
+    const { gameState: nextGameState, gameHistory: nextGameHistory } = restoreSandboxPosition(gamePosition)
+    const nextLoadedSnapshot = createSandboxSnapshot(nextGameState, nextGameHistory, positionName)
 
     previousCellCountRef.current = nextGameState.cells.length
-    lastLoadedPositionIdRef.current = response.id
+    lastLoadedPositionIdRef.current = positionId
     lastInvalidRoutePositionIdRef.current = null
 
     setLoadedSnapshot(nextLoadedSnapshot)
@@ -227,6 +231,10 @@ function SandboxRoute() {
     setShareModalError(null)
     setIsShareModalOpen(false)
     resetView()
+  }
+
+  function applyLoadedSandboxPosition(response: SandboxPositionResponse) {
+    applySandboxPosition(response.name, response.gamePosition, response.id)
   }
 
   function handlePlaceCell(x: number, y: number) {
@@ -271,7 +279,9 @@ function SandboxRoute() {
 
   useEffect(() => {
     if (!routePositionId) {
-      setLoadedSnapshot(null)
+      if (!routeInitialPosition) {
+        setLoadedSnapshot(null)
+      }
       setIsImportingPosition(false)
       lastLoadedPositionIdRef.current = null
       lastInvalidRoutePositionIdRef.current = null
@@ -296,7 +306,21 @@ function SandboxRoute() {
 
     setIsImportingPosition(true)
     setIsWelcomeModalVisible(false)
-  }, [navigate, normalizedRoutePositionId, routePositionId])
+  }, [navigate, normalizedRoutePositionId, routeInitialPosition, routePositionId])
+
+  useEffect(() => {
+    if (routePositionId || !routeInitialPosition) {
+      return
+    }
+
+    if (lastAppliedLocationKeyRef.current === location.key) {
+      return
+    }
+
+    lastAppliedLocationKeyRef.current = location.key
+    applySandboxPosition(routeInitialPosition.name, routeInitialPosition.gamePosition, null)
+    setIsWelcomeModalVisible(false)
+  }, [location.key, routeInitialPosition, routePositionId])
 
   useEffect(() => {
     if (!normalizedRoutePositionId) {
