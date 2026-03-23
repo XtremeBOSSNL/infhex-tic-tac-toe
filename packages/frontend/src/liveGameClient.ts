@@ -236,6 +236,15 @@ export function placeCell(x: number, y: number) {
   socket?.emit('place-cell', { x, y })
 }
 
+export function sendSessionChatMessage(message: string) {
+  const activeSessionId = getActiveSessionId(useLiveGameStore.getState().screen)
+  if (!activeSessionId) {
+    return
+  }
+
+  socket?.emit('send-session-chat-message', { message })
+}
+
 export function requestRematch() {
   const activeSessionId = getActiveSessionId(useLiveGameStore.getState().screen)
   if (!activeSessionId) {

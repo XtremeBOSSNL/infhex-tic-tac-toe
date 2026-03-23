@@ -2,6 +2,7 @@ import type {
     PlayerTileConfig,
     CreateSessionResponse,
     LobbyInfo,
+    SessionChatMessage,
     SessionFinishReason,
     SessionInfo,
     SessionParticipantRole,
@@ -73,6 +74,7 @@ export interface RematchCreateResult {
 }
 
 const MAX_PLAYERS_PER_SESSION = 2;
+const MAX_SESSION_CHAT_MESSAGES = 100;
 
 @injectable()
 export class SessionManager {
@@ -372,6 +374,29 @@ export class SessionManager {
         this.emitGameState(session);
     }
 
+    sendChatMessage(session: ServerGameSession, participantId: string, message: string): SessionChatMessage {
+        if (session.state === 'lobby') {
+            throw new SessionError('Chat is only available once the match has started.');
+        }
+
+        const participant = session.players.find((player) => player.id === participantId);
+        if (!participant) {
+            throw new SessionError('Only active match players can chat.');
+        }
+
+        const chatMessage: SessionChatMessage = {
+            id: Math.random().toString(36).slice(2, 10),
+            participantId,
+            participantDisplayName: participant.displayName,
+            message,
+            sentAt: Date.now()
+        };
+
+        session.chatMessages = [...session.chatMessages, chatMessage].slice(-MAX_SESSION_CHAT_MESSAGES);
+        this.emitSessionUpdated(session);
+        return chatMessage;
+    }
+
     requestRematch(session: ServerGameSession, participantId: string): RematchRequestResult {
         if (this.serverShutdownService.isShutdownPending()) {
             throw new SessionError('Server shutdown pending. Rematches are unavailable.');
@@ -416,6 +441,7 @@ export class SessionManager {
 
         const participantMapping: Record<string, string> = {};
         const rematchSession = createGameSession(sessionId, originalSession.gameOptions);
+        rematchSession.chatMessages = originalSession.chatMessages;
         rematchSession.players = originalSession.players.map(player => {
             const newParticipantId = this.createParticipantId(rematchSession);
             participantMapping[player.id] = newParticipantId;
@@ -451,7 +477,7 @@ export class SessionManager {
 
                 profileId: player.profileId,
             }
-        })
+        });
 
         const socketMapping: Record<string, string> = {};
         for (const { participant } of this.getAllParticipations(originalSession)) {
@@ -1041,6 +1067,7 @@ export class SessionManager {
             players: cloneParticipants(session.players),
             spectators: cloneParticipants(session.spectators),
             gameOptions: cloneGameOptions(session.gameOptions),
+            chatMessages: session.chatMessages.map((chatMessage) => ({ ...chatMessage }))
         };
 
         switch (session.state) {

@@ -9,6 +9,7 @@ import {
     type ServerToClientEvents,
     zJoinSessionRequest,
     zPlaceCellRequest,
+    zSessionChatMessageRequest,
 } from '@ih3t/shared';
 import { z, ZodError } from 'zod';
 import { ServerShutdownService } from '../admin/serverShutdownService';
@@ -283,6 +284,15 @@ export class SocketServerGateway {
                 const session = this.sessionManager.requireSession(sessionId);
 
                 this.sessionManager.placeCell(session, participantId, request.x, request.y);
+            });
+        });
+
+        this.bindSocketHandler(socket, "send-session-chat-message", zSessionChatMessageRequest, async request => {
+            await participationMutex.runExclusive(() => {
+                const { sessionId, participantId } = this.requireParticipation(socket.id);
+                const session = this.sessionManager.requireSession(sessionId);
+
+                this.sessionManager.sendChatMessage(session, participantId, request.message);
             });
         });
 

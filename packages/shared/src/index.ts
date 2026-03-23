@@ -143,6 +143,23 @@ export const zAdminBroadcastMessageResponse = z.object({
 });
 export type AdminBroadcastMessageResponse = z.infer<typeof zAdminBroadcastMessageResponse>;
 
+export const zSessionChatMessageText = z.string().trim().min(1).max(280);
+export type SessionChatMessageText = z.infer<typeof zSessionChatMessageText>;
+
+export const zSessionChatMessage = z.object({
+    id: zIdentifier,
+    participantId: zIdentifier,
+    participantDisplayName: z.string(),
+    message: zSessionChatMessageText,
+    sentAt: zTimestamp
+});
+export type SessionChatMessage = z.infer<typeof zSessionChatMessage>;
+
+export const zSessionChatMessageRequest = z.object({
+    message: zSessionChatMessageText
+});
+export type SessionChatMessageRequest = z.infer<typeof zSessionChatMessageRequest>;
+
 export const zServerSettings = z.object({
     maxConcurrentGames: z.number().int().min(0).max(10_000).nullable().default(null)
 });
@@ -470,7 +487,8 @@ const zSessionInfoBase = z.object({
     id: zIdentifier,
     players: z.array(zSessionParticipant),
     spectators: z.array(zSessionParticipant),
-    gameOptions: zLobbyOptions
+    gameOptions: zLobbyOptions,
+    chatMessages: z.array(zSessionChatMessage).default([])
 });
 
 export const zSessionInfo = z.discriminatedUnion('state', [
@@ -625,6 +643,7 @@ export const zClientToServerEvents = z.custom<{
     'leave-session': (sessionId: string) => void;
     'surrender-session': (sessionId: string) => void;
     'place-cell': (data: PlaceCellRequest) => void;
+    'send-session-chat-message': (data: SessionChatMessageRequest) => void;
     'request-rematch': (sessionId: string) => void;
     'cancel-rematch': (sessionId: string) => void;
 }>();

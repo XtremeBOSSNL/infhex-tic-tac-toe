@@ -5,6 +5,7 @@ import {
     type LobbyInfo,
     type LobbyOptions,
     type ParticipantConnection,
+    type SessionChatMessage,
     type SessionFinishReason,
     type SessionInfo,
     type SessionParticipant,
@@ -48,6 +49,7 @@ export interface ServerGameSession {
     finishReason: SessionFinishReason | null;
     winningPlayerId: string | null;
     rematchAcceptedPlayerIds: string[];
+    chatMessages: SessionChatMessage[];
     isRatedGame: boolean;
 }
 
@@ -174,6 +176,7 @@ export function createGameSession(
         finishReason: null,
         winningPlayerId: null,
         rematchAcceptedPlayerIds: [],
+        chatMessages: [],
         isRatedGame: false,
 
         gameId: '',
