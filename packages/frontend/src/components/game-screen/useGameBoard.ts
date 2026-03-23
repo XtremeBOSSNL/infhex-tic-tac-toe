@@ -1,4 +1,4 @@
-import type { BoardState } from '@ih3t/shared'
+import type { BoardState, GameState } from '@ih3t/shared'
 import type { CanvasHTMLAttributes, RefObject } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -51,8 +51,8 @@ interface PinchState {
 }
 
 interface UseGameBoardOptions {
-    boardState: BoardState
-    highlightedCells?: HexCell[]
+    gameState: GameState
+    highlightedCells: "last" | "turn" | HexCell[]
     localPlayerId: string | null
     interactionEnabled: boolean
     onPlaceCell?: (x: number, y: number) => void
@@ -245,7 +245,7 @@ function drawTilePieceMarker(
 }
 
 function useGameBoard({
-    boardState,
+    gameState: gameState,
     localPlayerId,
     interactionEnabled,
     onPlaceCell,
@@ -253,7 +253,7 @@ function useGameBoard({
     showTilePieceMarkers = false
 }: Readonly<UseGameBoardOptions>): UseGameBoardResult {
     const isSpectator = localPlayerId === null
-    const isOwnTurn = localPlayerId !== null && boardState.currentTurnPlayerId === localPlayerId
+    const isOwnTurn = localPlayerId !== null && gameState.currentTurnPlayerId === localPlayerId
     const canPlaceCell = interactionEnabled && Boolean(onPlaceCell) && isOwnTurn
 
     const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -279,17 +279,46 @@ function useGameBoard({
     } | null>(null)
 
     const renderableCells = useMemo(
-        () => buildRenderableCells(boardState.cells, boardState.playerTiles),
-        [boardState.cells, boardState.playerTiles]
+        () => buildRenderableCells(gameState.cells, gameState.playerTiles),
+        [gameState.cells, gameState.playerTiles]
     )
 
-    const highlightedCellKeys = useMemo(
-        () => new Set((highlightedCells ?? []).map(({ x, y }) => getCellKey(x, y))),
-        [highlightedCells]
-    )
+    const highlightedCellKeys = useMemo(() => {
+        const highlightedCellKeys = new Set<string>();
+
+        if (highlightedCells === "last") {
+            const cell = gameState.cells[gameState.cells.length - 1];
+            if (cell) {
+                highlightedCellKeys.add(
+                    getCellKey(cell.x, cell.y)
+                );
+            }
+        } else if (highlightedCells === "turn") {
+            const targetPlayerId = gameState.cells[gameState.cells.length - 1]?.occupiedBy;
+            for (let index = gameState.cells.length - 1; index >= 0; index--) {
+                const cell = gameState.cells[index];
+                if (cell.occupiedBy !== targetPlayerId) {
+                    break;
+                }
+
+                highlightedCellKeys.add(
+                    getCellKey(cell.x, cell.y)
+                );
+            }
+        } else {
+            for (const { x, y } of highlightedCells) {
+                highlightedCellKeys.add(
+                    getCellKey(x, y)
+                );
+            }
+        }
+
+        console.log("Calc -> %o | %o", highlightedCellKeys, highlightedCells);
+        return highlightedCellKeys;
+    }, [highlightedCells, !Array.isArray(highlightedCells) && gameState.cells])
 
     latestDataRef.current = {
-        boardState,
+        boardState: gameState,
         renderableCells,
         highlightedCellKeys,
         interactionEnabled,
@@ -659,7 +688,7 @@ function useGameBoard({
 
     useEffect(() => {
         scheduleDraw()
-    }, [boardState, renderableCells, highlightedCellKeys, interactionEnabled, canPlaceCell, isOwnTurn])
+    }, [gameState, renderableCells, highlightedCellKeys, interactionEnabled, canPlaceCell, isOwnTurn])
 
     useEffect(() => {
         const canvas = canvasRef.current

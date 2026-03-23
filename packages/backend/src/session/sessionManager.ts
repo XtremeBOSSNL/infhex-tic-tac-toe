@@ -364,9 +364,9 @@ export class SessionManager {
             timestamp
         });
 
-        if (moveResult.winningPlayerId) {
+        if (session.gameState.winner) {
             this.emitGameState(session);
-            void this.finishSession(session, 'six-in-a-row', moveResult.winningPlayerId);
+            void this.finishSession(session, 'six-in-a-row', session.gameState.winner.playerId);
             return;
         }
 

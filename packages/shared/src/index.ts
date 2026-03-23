@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 export const DUMMY = 'Hello?';
 export const PLACE_CELL_HEX_RADIUS = 8;
+const WINNING_LINE_LENGTH = 6;
 export type { ChangelogDay, ChangelogEntry, ChangelogEntryKind } from './changelogTypes';
 export { CHANGELOG_COMMIT_COUNT, CHANGELOG_DAYS, CHANGELOG_GENERATED_AT } from './generatedChangelog';
 export { FINISHED_GAMES_PAGE_SIZE, queryKeys } from './queryKeys';
@@ -185,6 +186,12 @@ export const zBoardCell = z.object({
 });
 export type BoardCell = z.infer<typeof zBoardCell>;
 
+export const zGameWinner = z.object({
+    cells: z.array(zHexCoordinate),
+    playerId: zIdentifier
+});
+export type GameWinner = z.infer<typeof zGameWinner>;
+
 export class GameRuleError extends Error {
     constructor(message: string) {
         super(message);
@@ -214,7 +221,7 @@ export function isCellWithinPlacementRadius(
 
 export const GameState = z.object({
     cells: z.array(zBoardCell),
-    highlightedCells: z.array(zHexCoordinate),
+    winner: zGameWinner.nullable(),
     playerTiles: z.record(z.string(), zPlayerTileConfig),
     currentTurnPlayerId: zIdentifier.nullable(),
     placementsRemaining: z.number().int().nonnegative(),
@@ -277,13 +284,12 @@ export interface ApplyGameMoveParams {
 
 export interface ApplyGameMoveResult {
     turnCompleted: boolean;
-    winningPlayerId: string | null;
 }
 
 export function createEmptyGameState(): GameState {
     return {
         cells: [],
-        highlightedCells: [],
+        winner: null,
         playerTiles: {},
         currentTurnPlayerId: null,
         placementsRemaining: 0,
@@ -296,7 +302,12 @@ export function cloneGameState(gameState: GameState): GameState {
     return {
         ...gameState,
         cells: gameState.cells.map((cell) => ({ ...cell })),
-        highlightedCells: gameState.highlightedCells.map((cell) => ({ ...cell })),
+        winner: gameState.winner
+            ? {
+                ...gameState.winner,
+                cells: gameState.winner.cells.map((cell) => ({ ...cell }))
+            }
+            : null,
         playerTiles: Object.fromEntries(
             Object.entries(gameState.playerTiles).map(([playerId, playerTileConfig]) => [playerId, { ...playerTileConfig }])
         ),
@@ -312,7 +323,7 @@ export function createStartedGameState(playerIds: readonly string[]): GameState 
 
 export function initializeGameState(gameState: GameState, playerIds: readonly string[]): void {
     gameState.cells = [];
-    gameState.highlightedCells = [];
+    gameState.winner = null;
     gameState.playerTiles = buildPlayerTileConfigMap(playerIds);
     gameState.currentTurnExpiresAt = null;
     gameState.playerTimeRemainingMs = {};
@@ -322,13 +333,7 @@ export function initializeGameState(gameState: GameState, playerIds: readonly st
 export function getPublicGameState(gameState: GameState): GameState {
     return {
         ...cloneGameState(gameState),
-        cells: [...gameState.cells].sort((a, b) => {
-            if (a.y === b.y) {
-                return a.x - b.x;
-            }
-
-            return a.y - b.y;
-        })
+        cells: [...gameState.cells]
     };
 }
 
@@ -341,6 +346,11 @@ export function applyGameMove(gameState: GameState, params: ApplyGameMoveParams)
 
     if (gameState.placementsRemaining <= 0) {
         throw new GameRuleError('No placements remaining this turn');
+    }
+
+    if (gameState.winner) {
+        /* no more moves are allowed */
+        throw new GameRuleError('Encountered moves after a winning game state');
     }
 
     const cellKey = getCellKey(x, y);
@@ -357,7 +367,6 @@ export function applyGameMove(gameState: GameState, params: ApplyGameMoveParams)
         throw new GameRuleError(`Cell must be within ${PLACE_CELL_HEX_RADIUS} hexes of an existing placed cell`);
     }
 
-    const isFirstPlacementOfTurn = gameState.cells.length === 0 || gameState.placementsRemaining === 2;
     const turnCompleted = gameState.placementsRemaining === 1;
     const playerIds = Object.keys(gameState.playerTiles);
 
@@ -366,15 +375,13 @@ export function applyGameMove(gameState: GameState, params: ApplyGameMoveParams)
         y,
         occupiedBy: zCellOccupant.parse(playerId)
     });
-    gameState.highlightedCells = isFirstPlacementOfTurn
-        ? [{ x, y }]
-        : [...gameState.highlightedCells, { x, y }].slice(-2);
     gameState.placementsRemaining -= 1;
 
-    if (hasSixInARow(gameState, playerId, x, y)) {
-        return {
-            turnCompleted,
-            winningPlayerId: playerId
+    const winningLine = findWinningLine(gameState, playerId, x, y);
+    if (winningLine) {
+        gameState.winner = {
+            cells: winningLine,
+            playerId
         };
     }
 
@@ -385,8 +392,7 @@ export function applyGameMove(gameState: GameState, params: ApplyGameMoveParams)
     }
 
     return {
-        turnCompleted,
-        winningPlayerId: null
+        turnCompleted
     };
 }
 
@@ -398,7 +404,7 @@ function setCurrentTurn(gameState: GameState, playerId: string | null, placement
     }
 }
 
-function hasSixInARow(gameState: GameState, playerId: string, x: number, y: number): boolean {
+function findWinningLine(gameState: GameState, playerId: string, x: number, y: number): HexCoordinate[] | null {
     const occupiedCells = new Set(
         gameState.cells
             .filter((cell) => cell.occupiedBy === playerId)
@@ -410,34 +416,46 @@ function hasSixInARow(gameState: GameState, playerId: string, x: number, y: numb
         [1, -1]
     ];
 
-    return directions.some(([directionX, directionY]) => {
-        const connectedCount =
-            1 +
-            countConnectedTiles(occupiedCells, x, y, directionX, directionY) +
-            countConnectedTiles(occupiedCells, x, y, -directionX, -directionY);
+    for (const [directionX, directionY] of directions) {
+        const backwardCells = collectConnectedTiles(occupiedCells, x, y, -directionX, -directionY).reverse();
+        const forwardCells = collectConnectedTiles(occupiedCells, x, y, directionX, directionY);
+        const line = [...backwardCells, { x, y }, ...forwardCells];
 
-        return connectedCount >= 6;
-    });
+        if (line.length >= WINNING_LINE_LENGTH) {
+            return selectWinningLineSegment(line, backwardCells.length);
+        }
+    }
+
+    return null;
 }
 
-function countConnectedTiles(
+function collectConnectedTiles(
     occupiedCells: Set<string>,
     startX: number,
     startY: number,
     directionX: number,
     directionY: number
-): number {
-    let count = 0;
+): HexCoordinate[] {
+    const connectedTiles: HexCoordinate[] = [];
     let currentX = startX + directionX;
     let currentY = startY + directionY;
 
     while (occupiedCells.has(getCellKey(currentX, currentY))) {
-        count += 1;
+        connectedTiles.push({ x: currentX, y: currentY });
         currentX += directionX;
         currentY += directionY;
     }
 
-    return count;
+    return connectedTiles;
+}
+
+function selectWinningLineSegment(line: readonly HexCoordinate[], pivotIndex: number): HexCoordinate[] {
+    const minStartIndex = Math.max(0, pivotIndex - (WINNING_LINE_LENGTH - 1));
+    const maxStartIndex = Math.min(pivotIndex, line.length - WINNING_LINE_LENGTH);
+    const preferredStartIndex = pivotIndex - Math.floor((WINNING_LINE_LENGTH - 1) / 2);
+    const startIndex = Math.min(maxStartIndex, Math.max(minStartIndex, preferredStartIndex));
+
+    return line.slice(startIndex, startIndex + WINNING_LINE_LENGTH);
 }
 
 export const zSessionParticipant = z.object({

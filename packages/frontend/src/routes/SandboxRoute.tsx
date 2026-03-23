@@ -10,7 +10,7 @@ import {
     type SessionParticipant
 } from '@ih3t/shared'
 import { useQueryClient } from '@tanstack/react-query'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router'
 import { toast } from 'react-toastify'
 import GameBoardCanvas from '../components/game-screen/GameBoardCanvas'
@@ -110,26 +110,13 @@ function restoreSandboxPosition(gamePosition: SandboxGamePosition) {
     const orderedCells = [...gamePosition.cells].sort((leftCell, rightCell) => leftCell.moveId - rightCell.moveId)
     const gameHistory: GameState[] = []
 
-    let winningPlayerId: string | null = null;
     for (const cell of orderedCells) {
-        if (winningPlayerId) {
-            /* no more moves are allowed */
-            throw new GameRuleError('Encountered moves after a winning game state');
-        }
-
         gameHistory.push(cloneGameState(nextGameState))
-        const moveResult = applyGameMove(nextGameState, {
+        applyGameMove(nextGameState, {
             playerId: getSandboxPlayerId(cell.player),
             x: cell.x,
             y: cell.y
         })
-
-        if (moveResult.winningPlayerId) {
-            nextGameState.currentTurnPlayerId = getSandboxPlayerId(cell.player === 'player-1' ? 'player-2' : 'player-1')
-            nextGameState.placementsRemaining = 2
-            nextGameState.currentTurnExpiresAt = null
-            winningPlayerId = moveResult.winningPlayerId;
-        }
     }
 
     const expectedCurrentTurnPlayerId = getSandboxPlayerId(gamePosition.currentTurnPlayer)
@@ -145,8 +132,6 @@ function restoreSandboxPosition(gamePosition: SandboxGamePosition) {
 
     return {
         gameState: nextGameState,
-        winningPlayerId,
-
         gameHistory
     }
 }
@@ -173,7 +158,6 @@ function SandboxRoute() {
     const [gameState, setGameState] = useState(() => createSandboxGameState())
     const [gameHistory, setGameHistory] = useState<GameState[]>([])
     const [loadedSnapshot, setLoadedSnapshot] = useState<SandboxSnapshot | null>(null)
-    const [winnerId, setWinnerId] = useState<string | null>(null)
     const [isWelcomeModalVisible, setIsWelcomeModalVisible] = useState(() => !routePositionId)
     const [isWinnerBannerVisible, setIsWinnerBannerVisible] = useState(false)
     const [isImportModalOpen, setIsImportModalOpen] = useState(false)
@@ -197,13 +181,13 @@ function SandboxRoute() {
     const currentBoardStateKey = getSandboxPositionKey(gameState)
     const currentPositionName = loadedSnapshot?.positionName ?? null
     const isAuthenticated = Boolean(accountQuery.data?.user)
-    const localPlayerId = winnerId === null
+    const localPlayerId = gameState.winner === null
         ? (gameState.currentTurnPlayerId ?? SANDBOX_PLAYERS[0]!.id)
         : null
     const canTakeBack = gameHistory.length > 0
     const canSharePosition =
         isAuthenticated
-        && winnerId === null
+        && gameState.winner === null
         && currentBoardStateKey !== null
         && currentBoardStateKey !== initialBoardStateKey
     const routeSandboxPositionQuery = useQuerySandboxPosition(normalizedRoutePositionId, {
@@ -221,11 +205,11 @@ function SandboxRoute() {
         renderableCellCount,
         resetView
     } = useGameBoard({
-        boardState: gameState,
-        highlightedCells: gameState.highlightedCells,
+        gameState: gameState,
+        highlightedCells: gameState.winner?.cells ?? "last",
         localPlayerId,
         interactionEnabled: !isWelcomeModalVisible && !isWinnerBannerVisible && !isImportModalOpen && !isImportingPosition && !isShareModalOpen && !isRoutePositionLoading,
-        onPlaceCell: winnerId === null ? handlePlaceCell : undefined
+        onPlaceCell: gameState.winner === null ? handlePlaceCell : undefined
     })
 
     function applySandboxPosition(
@@ -233,7 +217,7 @@ function SandboxRoute() {
         gamePosition: SandboxGamePosition,
         positionId: string | null
     ) {
-        const { gameState: nextGameState, gameHistory: nextGameHistory, winningPlayerId } = restoreSandboxPosition(gamePosition)
+        const { gameState: nextGameState, gameHistory: nextGameHistory } = restoreSandboxPosition(gamePosition)
         const nextLoadedSnapshot = createSandboxSnapshot(nextGameState, nextGameHistory, positionName)
 
         previousCellCountRef.current = nextGameState.cells.length
@@ -243,7 +227,6 @@ function SandboxRoute() {
         setLoadedSnapshot(nextLoadedSnapshot)
         setGameHistory(nextGameHistory)
         setGameState(nextGameState)
-        setWinnerId(winningPlayerId)
         setIsWinnerBannerVisible(false)
         setIsImportModalOpen(false)
         setImportModalError(null)
@@ -261,22 +244,15 @@ function SandboxRoute() {
         const nextGameState = cloneGameState(gameState)
 
         try {
-            const result = applyGameMove(nextGameState, {
+            applyGameMove(nextGameState, {
                 playerId: actingPlayerId,
                 x,
                 y
             })
 
-            if (result.winningPlayerId) {
-                nextGameState.currentTurnPlayerId = null
-                nextGameState.placementsRemaining = 0
-                nextGameState.currentTurnExpiresAt = null
-            }
-
             setGameHistory((currentHistory) => [...currentHistory, cloneGameState(gameState)])
             setGameState(nextGameState)
-            setWinnerId(result.winningPlayerId)
-            setIsWinnerBannerVisible(Boolean(result.winningPlayerId))
+            setIsWinnerBannerVisible(Boolean(nextGameState.winner))
         } catch (error) {
             const errorMessage = error instanceof GameRuleError
                 ? error.message
@@ -388,7 +364,6 @@ function SandboxRoute() {
         previousCellCountRef.current = nextGameState.cells.length
         setGameHistory(nextGameHistory)
         setGameState(nextGameState)
-        setWinnerId(null)
         setIsWinnerBannerVisible(false)
         setShareUrl(null)
         setShareModalError(null)
@@ -404,7 +379,6 @@ function SandboxRoute() {
         previousCellCountRef.current = previousGameState.cells.length
         setGameHistory((currentHistory) => currentHistory.slice(0, -1))
         setGameState(cloneGameState(previousGameState))
-        setWinnerId(null)
         setIsWinnerBannerVisible(false)
         setShareUrl(null)
         setShareModalError(null)
@@ -513,7 +487,7 @@ function SandboxRoute() {
                         <SandboxTurnIndicator
                             players={SANDBOX_PLAYERS}
                             gameState={gameState}
-                            winnerId={winnerId}
+                            winnerId={gameState.winner?.playerId ?? null}
                         />
                     )}
 
@@ -521,7 +495,7 @@ function SandboxRoute() {
                         <SandboxWinnerBanner
                             players={SANDBOX_PLAYERS}
                             gameState={gameState}
-                            winnerId={isWinnerBannerVisible ? winnerId : null}
+                            winnerId={isWinnerBannerVisible ? gameState.winner?.playerId ?? null : null}
                             onResetBoard={resetSandbox}
                             onExploreBoard={() => setIsWinnerBannerVisible(false)}
                         />

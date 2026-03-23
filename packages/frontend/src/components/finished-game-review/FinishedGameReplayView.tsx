@@ -84,15 +84,32 @@ function EndIcon() {
 }
 
 function buildReplayBoardState(game: FinishedGameRecord, visibleMoveCount: number): BoardState {
-  return {
-    ...createEmptyGameState(),
-    cells: game.moves.slice(0, visibleMoveCount).map((move) => ({
-      x: move.x,
-      y: move.y,
-      occupiedBy: move.playerId as CellOccupant
-    })),
-    playerTiles: game.playerTiles
+  const playerIds = game.players.map((player) => player.playerId)
+  if (playerIds.length === 0) {
+    return {
+      ...createEmptyGameState(),
+      playerTiles: game.playerTiles
+    }
   }
+
+  const replayGameState = createStartedGameState(playerIds)
+  replayGameState.playerTiles = game.playerTiles
+
+  for (const move of game.moves.slice(0, visibleMoveCount)) {
+    applyGameMove(replayGameState, {
+      playerId: move.playerId as CellOccupant,
+      x: move.x,
+      y: move.y
+    })
+
+    if (replayGameState.winner) {
+      replayGameState.currentTurnPlayerId = null
+      replayGameState.placementsRemaining = 0
+      replayGameState.currentTurnExpiresAt = null
+    }
+  }
+
+  return replayGameState
 }
 
 function buildReplaySandboxPosition(game: FinishedGameRecord, visibleMoveCount: number): SandboxRouteInitialPosition | null {
@@ -116,19 +133,11 @@ function buildReplaySandboxPosition(game: FinishedGameRecord, visibleMoveCount: 
       return null
     }
 
-    const moveResult = applyGameMove(replayGameState, {
+    applyGameMove(replayGameState, {
       playerId: replayPlayerId,
       x: move.x,
       y: move.y
     })
-
-    if (moveResult.winningPlayerId) {
-      replayGameState.currentTurnPlayerId = replayPlayerId === replayPlayerIds[0]
-        ? replayPlayerIds[1]
-        : replayPlayerIds[0]
-      replayGameState.placementsRemaining = 2
-      replayGameState.currentTurnExpiresAt = null
-    }
   }
 
   const currentTurnPlayer = replayGameState.currentTurnPlayerId === replayPlayerIds[1] ? 'player-2' : 'player-1'
@@ -210,8 +219,8 @@ function FinishedGameReplayView({
     renderableCellCount,
     resetView
   } = useGameBoard({
-    boardState,
-    highlightedCells,
+    gameState: boardState,
+    highlightedCells: boardState.winner?.cells ?? highlightedCells,
     localPlayerId: null,
     interactionEnabled: true,
     showTilePieceMarkers

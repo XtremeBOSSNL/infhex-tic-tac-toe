@@ -74,8 +74,8 @@ function GameScreen({
     renderableCellCount,
     resetView
   } = useGameBoard({
-    boardState: gameState,
-    highlightedCells: gameState.highlightedCells,
+    gameState: gameState,
+    highlightedCells: gameState.winner?.cells ?? "turn",
     localPlayerId: isSpectator ? null : currentPlayerId,
     interactionEnabled,
     showTilePieceMarkers,
