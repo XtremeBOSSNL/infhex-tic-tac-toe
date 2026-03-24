@@ -8,6 +8,7 @@ import type {
     SessionParticipantRole,
     SessionChatMessageId,
     SessionChatSenderId,
+    PlayerRating,
 } from '@ih3t/shared';
 import { buildPlayerTileConfigMap } from '@ih3t/shared';
 import assert from 'node:assert';
@@ -125,16 +126,18 @@ export class SessionManager {
             throw new SessionError('Session not found.');
         }
 
-        if (session.state === 'lobby') {
-            throw new SessionError('Only in-progress games can be terminated.');
-        }
+        return session.lock.runExclusive(async () => {
+            if (session.state === 'lobby') {
+                throw new SessionError('Only in-progress games can be terminated.');
+            }
 
-        if (session.state === 'finished') {
-            throw new SessionError('Session has already finished.');
-        }
+            if (session.state === 'finished') {
+                throw new SessionError('Session has already finished.');
+            }
 
-        await this.finishSession(session, 'terminated', null);
-        return this.toSessionInfo(session);
+            await this.finishSessionLocked(session, 'terminated', null);
+            return this.toSessionInfo(session);
+        });
     }
 
     getTerminalSessionStatuses(now = Date.now()): TerminalSessionStatus[] {
@@ -206,18 +209,15 @@ export class SessionManager {
         return { sessionId };
     }
 
-    async activateSession(sessionId: string): Promise<void> {
-        const session = this.sessions.get(sessionId);
-        if (!session) {
-            return;
-        }
-
-        await this.tickSession(session);
+    async joinSession(session: ServerGameSession, params: JoinSessionParams): Promise<ServerSessionParticipation> {
+        const playerRating = params.profile ? await this.eloHandler.getPlayerRating(params.profile.id) : { eloScore: 0, gameCount: 0 };
+        return session.lock.runExclusive(() => this.joinSessionLocked(session, params, playerRating));
     }
 
-    async joinSession(session: ServerGameSession, params: JoinSessionParams): Promise<ServerSessionParticipation> {
-        if (session.state === 'finished') {
-            throw new SessionError('Session has already finished');
+    private async joinSessionLocked(session: ServerGameSession, params: JoinSessionParams, playerRating: PlayerRating): Promise<ServerSessionParticipation> {
+        if (this.sessions.get(session.id) !== session) {
+            /* session no longer exists */
+            throw new SessionError('Session no longer exists');
         }
 
         const profileId = params.profile?.id ?? null;
@@ -225,11 +225,6 @@ export class SessionManager {
             throw new SessionError('Sign in with Discord to join rated games.');
         }
 
-        /* 
-         * Optimistically load the player ELO even only used in lobby state
-         * but we do not want a state change while registering the player
-         */
-        const playerRating = profileId ? await this.eloHandler.getPlayerRating(profileId) : { eloScore: 0, gameCount: 0 };
 
         let participantRole: SessionParticipantRole;
         let participant: ServerSessionParticipant;
@@ -277,6 +272,7 @@ export class SessionManager {
                 break;
 
             case 'in-game':
+            case 'finished':
                 participantRole = "spectator";
                 session.spectators.push(participant = {
                     id: this.createParticipantId(session),
@@ -319,32 +315,47 @@ export class SessionManager {
         };
     }
 
-    leaveSession(session: ServerGameSession, participantId: string, source: PlayerLeaveSource): void {
+    async leaveSession(session: ServerGameSession, participantId: string, source: PlayerLeaveSource) {
+        session.lock.runExclusive(() => this.leaveSessionLocked(session, participantId, source));
+    }
+
+    private leaveSessionLocked(session: ServerGameSession, participantId: string, source: PlayerLeaveSource): void {
         if (session.players.some((participant) => participant.id === participantId)) {
-            this.disconnectPlayerFromSession(session, participantId, source);
+            this.disconnectPlayerFromSessionLocked(session, participantId, source);
             return;
         }
 
         if (session.spectators.some((participant) => participant.id === participantId)) {
-            this.disconnectSpectatorFromSession(session, participantId, source);
+            this.disconnectSpectatorFromSessionLocked(session, participantId, source);
             return;
         }
     }
 
-    surrenderSession(session: ServerGameSession, participantId: string): void {
-        if (session.state !== 'in-game') {
-            throw new SessionError('Game is not currently active');
-        }
+    async surrenderSession(session: ServerGameSession, participantId: string) {
+        session.lock.runExclusive(async () => {
+            if (session.state !== 'in-game') {
+                throw new SessionError('Game is not currently active');
+            }
 
-        if (!session.players.some((participant) => participant.id === participantId)) {
-            throw new SessionError('Only active players can surrender');
-        }
+            if (!session.players.some((participant) => participant.id === participantId)) {
+                throw new SessionError('Only active players can surrender');
+            }
 
-        const winningPlayerId = session.players.find((player) => player.id !== participantId)?.id ?? null;
-        void this.finishSession(session, 'surrender', winningPlayerId);
+            const winningPlayerId = session.players.find((player) => player.id !== participantId)?.id ?? null;
+            await this.finishSessionLocked(session, 'surrender', winningPlayerId)
+        });
     }
 
-    placeCell(session: ServerGameSession, playerId: string, x: number, y: number): void {
+
+    async placeCell(session: ServerGameSession, playerId: string, x: number, y: number) {
+        await session.lock.runExclusive(
+            async () => await this.placeCellLocked(session, playerId, x, y)
+        )
+    }
+
+    private async placeCellLocked(session: ServerGameSession, playerId: string, x: number, y: number) {
+        assert(session.lock.isLocked());
+
         if (session.state !== 'in-game') {
             throw new SessionError('Game is not currently active');
         }
@@ -388,7 +399,7 @@ export class SessionManager {
 
         if (session.gameState.winner) {
             this.emitGameState(session);
-            void this.finishSession(session, 'six-in-a-row', session.gameState.winner.playerId);
+            await this.finishSessionLocked(session, 'six-in-a-row', session.gameState.winner.playerId);
             return;
         }
 
@@ -420,140 +431,148 @@ export class SessionManager {
         });
     }
 
-    requestRematch(session: ServerGameSession, participantId: string): RematchRequestResult {
-        if (this.serverShutdownService.isShutdownPending()) {
-            throw new SessionError('Server shutdown pending. Rematches are unavailable.');
-        }
+    async requestRematch(session: ServerGameSession, participantId: string): Promise<RematchRequestResult> {
+        return session.lock.runExclusive(async () => {
+            if (this.serverShutdownService.isShutdownPending()) {
+                throw new SessionError('Server shutdown pending. Rematches are unavailable.');
+            }
 
-        if (session.state !== 'finished') {
-            throw new SessionError('Rematch is not available for this match.');
-        }
+            if (session.state !== 'finished') {
+                throw new SessionError('Rematch is not available for this match.');
+            }
 
-        if (!session.players.some((player) => player.id === participantId)) {
-            throw new SessionError('Rematch is not available for this match.');
-        }
+            if (!session.players.some((player) => player.id === participantId)) {
+                throw new SessionError('Rematch is not available for this match.');
+            }
 
-        const connectedPlayers = session.players.filter(player => player.connection.status === "connected");
-        if (connectedPlayers.length !== MAX_PLAYERS_PER_SESSION) {
-            throw new SessionError('Your opponent is no longer available for a rematch.');
-        }
+            const connectedPlayers = session.players.filter(player => player.connection.status === "connected");
+            if (connectedPlayers.length !== MAX_PLAYERS_PER_SESSION) {
+                throw new SessionError('Your opponent is no longer available for a rematch.');
+            }
 
-        if (!session.rematchAcceptedPlayerIds.includes(participantId)) {
-            session.rematchAcceptedPlayerIds = [...session.rematchAcceptedPlayerIds, participantId];
-        }
-        this.emitSessionUpdated(session);
+            if (!session.rematchAcceptedPlayerIds.includes(participantId)) {
+                session.rematchAcceptedPlayerIds = [...session.rematchAcceptedPlayerIds, participantId];
+            }
+            this.emitSessionUpdated(session);
 
-        return {
-            status: session.rematchAcceptedPlayerIds.length === session.players.length ? 'ready' : 'pending',
-            players: session.players.map(({ id }) => id),
-            spectators: session.spectators.map(({ id }) => id)
-        };
+            return {
+                status: session.rematchAcceptedPlayerIds.length === session.players.length ? 'ready' : 'pending',
+                players: session.players.map(({ id }) => id),
+                spectators: session.spectators.map(({ id }) => id)
+            };
+        });
     }
 
-    createRematchSession(sessionId: string): RematchCreateResult {
+    async createRematchSession(sessionId: string): Promise<RematchCreateResult> {
         this.assertNewGameCreationAllowed('rematch');
 
         const originalSession = this.requireSession(sessionId);
-        if (originalSession.state !== 'finished') {
-            throw new SessionError('Rematch is not available for this match.');
-        }
+        return originalSession.lock.runExclusive(async () => {
+            if (originalSession.state !== 'finished') {
+                throw new SessionError('Rematch is not available for this match.');
+            }
 
-        if (originalSession.rematchAcceptedPlayerIds.length < originalSession.players.length) {
-            throw new SessionError('Waiting for both players to request the rematch.');
-        }
+            if (originalSession.rematchAcceptedPlayerIds.length < originalSession.players.length) {
+                throw new SessionError('Waiting for both players to request the rematch.');
+            }
 
-        const participantMapping: Record<string, string> = {};
-        const rematchSession = createGameSession(sessionId, originalSession.gameOptions);
+            const participantMapping: Record<string, string> = {};
+            const rematchSession = createGameSession(sessionId, originalSession.gameOptions);
 
-        rematchSession.players = originalSession.players.map(player => {
-            const newParticipantId = this.createParticipantId(rematchSession);
-            participantMapping[player.id] = newParticipantId;
+            const socketMapping: Record<string, string> = {};
+            await rematchSession.lock.runExclusive(async () => {
+                rematchSession.players = originalSession.players.map(player => {
+                    const newParticipantId = this.createParticipantId(rematchSession);
+                    participantMapping[player.id] = newParticipantId;
+
+                    return {
+                        id: newParticipantId,
+                        deviceId: player.deviceId,
+
+                        connection: { status: "disconnected", timestamp: Date.now() },
+                        displayName: player.displayName,
+
+                        rating: player.ratingAdjusted ?? player.rating,
+                        ratingAdjustment: null,
+                        ratingAdjusted: null,
+
+                        profileId: player.profileId,
+                    };
+                })
+                rematchSession.players.reverse()
+
+                rematchSession.spectators = originalSession.spectators.map(player => {
+                    const newParticipantId = this.createParticipantId(rematchSession);
+                    participantMapping[player.id] = newParticipantId;
+
+                    return {
+                        id: newParticipantId,
+                        deviceId: player.deviceId,
+
+                        connection: { status: "disconnected", timestamp: Date.now() },
+                        displayName: player.displayName,
+
+                        rating: player.ratingAdjusted ?? player.rating,
+                        ratingAdjustment: null,
+                        ratingAdjusted: null,
+
+                        profileId: player.profileId,
+                    }
+                });
+
+                rematchSession.chatNames = Object.fromEntries(
+                    Object.entries(originalSession.chatNames)
+                        .map(([senderId, displayName]) => [participantMapping[senderId], displayName])
+                );
+                rematchSession.chatMessages = originalSession.chatMessages.map(message => ({
+                    ...message,
+                    senderId: participantMapping[message.senderId] as SessionChatSenderId
+                }));
+
+                for (const { participant } of this.getAllParticipations(originalSession)) {
+                    if (participant.connection.status === "connected") {
+                        socketMapping[participantMapping[participant.id]] = participant.connection.socketId;
+                    }
+
+                    if (participant.connection.status !== "disconnected") {
+                        /* mark all clients as disconnected in the old session */
+                        this.updateParticipantConnection(participant, { status: "disconnected", timestamp: Date.now() });
+                    }
+                }
+
+                this.sessions.delete(originalSession.id);
+                this.sessions.set(rematchSession.id, rematchSession);
+                this.emitLobbyListUpdated();
+            });
+
+            void this.tickSession(rematchSession);
 
             return {
-                id: newParticipantId,
-                deviceId: player.deviceId,
-
-                connection: { status: "disconnected", timestamp: Date.now() },
-                displayName: player.displayName,
-
-                rating: player.ratingAdjusted ?? player.rating,
-                ratingAdjustment: null,
-                ratingAdjusted: null,
-
-                profileId: player.profileId,
-            };
+                rematchSession,
+                socketMapping: socketMapping
+            }
         })
-        rematchSession.players.reverse()
-
-        rematchSession.spectators = originalSession.spectators.map(player => {
-            const newParticipantId = this.createParticipantId(rematchSession);
-            participantMapping[player.id] = newParticipantId;
-
-            return {
-                id: newParticipantId,
-                deviceId: player.deviceId,
-
-                connection: { status: "disconnected", timestamp: Date.now() },
-                displayName: player.displayName,
-
-                rating: player.ratingAdjusted ?? player.rating,
-                ratingAdjustment: null,
-                ratingAdjusted: null,
-
-                profileId: player.profileId,
-            }
-        });
-
-        rematchSession.chatNames = Object.fromEntries(
-            Object.entries(originalSession.chatNames)
-                .map(([senderId, displayName]) => [participantMapping[senderId], displayName])
-        );
-        rematchSession.chatMessages = originalSession.chatMessages.map(message => ({
-            ...message,
-            senderId: participantMapping[message.senderId] as SessionChatSenderId
-        }));
-
-        const socketMapping: Record<string, string> = {};
-        for (const { participant } of this.getAllParticipations(originalSession)) {
-            if (participant.connection.status === "connected") {
-                socketMapping[participantMapping[participant.id]] = participant.connection.socketId;
-            }
-
-            if (participant.connection.status !== "disconnected") {
-                /* mark all clients as disconnected in the old session */
-                this.updateParticipantConnection(participant, { status: "disconnected", timestamp: Date.now() });
-            }
-        }
-
-        this.sessions.delete(originalSession.id);
-        this.sessions.set(rematchSession.id, rematchSession);
-        this.emitLobbyListUpdated();
-
-        void this.tickSession(rematchSession);
-
-        return {
-            rematchSession,
-            socketMapping: socketMapping
-        }
     }
 
-    cancelRematch(session: ServerGameSession, participantId?: string): void {
-        if (session.state !== 'finished') {
-            return;
-        }
+    async cancelRematch(session: ServerGameSession, participantId?: string) {
+        await session.lock.runExclusive(async () => {
+            if (session.state !== 'finished') {
+                return;
+            }
 
-        if (participantId) {
-            if (!session.rematchAcceptedPlayerIds.includes(participantId)) {
+            if (participantId) {
+                if (!session.rematchAcceptedPlayerIds.includes(participantId)) {
+                    return;
+                }
+
+                session.rematchAcceptedPlayerIds = [];
+                this.emitSessionUpdated(session);
                 return;
             }
 
             session.rematchAcceptedPlayerIds = [];
             this.emitSessionUpdated(session);
-            return;
-        }
-
-        session.rematchAcceptedPlayerIds = [];
-        this.emitSessionUpdated(session);
+        })
     }
 
     private readonly handleTurnExpired = (sessionId: string): void => {
@@ -570,7 +589,9 @@ export class SessionManager {
         }
 
         const winningPlayerId = session.players.find((player) => player.id !== timedOutPlayerId)?.id ?? null;
-        void this.finishSession(session, 'timeout', winningPlayerId);
+        void session.lock.runExclusive(
+            async () => await this.finishSessionLocked(session, 'timeout', winningPlayerId)
+        );
     };
 
     private assertNewGameCreationAllowed(source: 'lobby' | 'rematch'): void {
@@ -609,23 +630,44 @@ export class SessionManager {
     }
 
     private async tickSession(session: ServerGameSession) {
+        await session.lock.runExclusive(
+            async () => this.tickSessionLocked(session)
+        )
+    }
+
+    private deleteSession(session: ServerGameSession, reason: string) {
+        const sessionAge = Date.now() - session.createdAt;
+        this.logger.info(
+            {
+                event: 'session.deleted',
+                sessionId: session.id,
+                state: session.state,
+
+                sessionAge,
+                reason,
+            },
+            'Removing session'
+        );
+
+        this.timeControl.clearSession(session.id);
+        this.sessions.delete(session.id);
+        this.emitLobbyListUpdated();
+        this.shutdownHook.tryShutdown();
+    }
+
+    private async tickSessionLocked(session: ServerGameSession) {
+        assert(session.lock.isLocked());
+
+        if (this.sessions.get(session.id) !== session) {
+            /* session no longer exists */
+            return;
+        }
+
         const connectedPlayers = session.players.filter(spectator => spectator.connection.status !== "disconnected");
         const connectedSpectators = session.spectators.filter(spectator => spectator.connection.status !== "disconnected");
         const sessionAge = Date.now() - session.createdAt;
         if (connectedPlayers.length === 0 && connectedSpectators.length === 0 && sessionAge >= 5_000) {
-            this.logger.info(
-                {
-                    event: 'session.terminated-empty',
-                    sessionId: session.id,
-                    sessionAge,
-                    state: session.state
-                },
-                'Removing empty session'
-            );
-            this.timeControl.clearSession(session.id);
-            this.sessions.delete(session.id);
-            this.emitLobbyListUpdated();
-            this.shutdownHook.tryShutdown();
+            this.deleteSession(session, "empty");
             return;
         }
 
@@ -702,7 +744,7 @@ export class SessionManager {
                 if (connectedPlayers.length <= 1) {
                     /* Only one player left. Make him the winner. */
                     const [winningPlayer] = connectedPlayers;
-                    await this.finishSession(session, 'disconnect', winningPlayer?.id ?? null);
+                    await this.finishSessionLocked(session, 'disconnect', winningPlayer?.id ?? null);
                     break;
                 }
 
@@ -710,12 +752,22 @@ export class SessionManager {
             }
 
             case 'finished':
+                if (connectedPlayers.length === 0) {
+                    /*
+                     * All players have left the session.
+                     * Specators do not count.
+                     */
+                    this.deleteSession(session, "empty");
+                    return;
+                }
+
                 /* nothing to do */
                 break;
         }
     }
 
-    private async finishSession(session: ServerGameSession, reason: SessionFinishReason, winningPlayerId: string | null): Promise<void> {
+    private async finishSessionLocked(session: ServerGameSession, reason: SessionFinishReason, winningPlayerId: string | null): Promise<void> {
+        assert(session.lock.isLocked());
         if (session.state === 'finished') {
             return;
         }
@@ -728,15 +780,6 @@ export class SessionManager {
         session.finishReason = reason;
         session.winningPlayerId = winningPlayerId;
         session.rematchAcceptedPlayerIds = [];
-
-        /* mark all participants as disconnected if they're orphaned */
-        for (const { participant } of this.getAllParticipations(session)) {
-            if (participant.connection.status !== "orphaned") {
-                continue
-            }
-
-            this.updateParticipantConnection(participant, { status: "disconnected", timestamp: Date.now() });
-        }
 
         await this.applyRatingAdjustments(session, winningPlayerId);
 
@@ -782,6 +825,8 @@ export class SessionManager {
             },
             'Session finished'
         );
+
+        void this.tickSession(session);
     }
 
     private updateParticipantConnection(participant: ServerSessionParticipant, connection: ServerParticipantConnection) {
@@ -800,7 +845,7 @@ export class SessionManager {
         participant.connection = connection;
     }
 
-    private disconnectPlayerFromSession(session: ServerGameSession, participantId: string, source: PlayerLeaveSource): void {
+    private disconnectPlayerFromSessionLocked(session: ServerGameSession, participantId: string, source: PlayerLeaveSource): void {
         const index = session.players.findIndex(player => player.id === participantId);
         if (index === -1) {
             return;
@@ -838,7 +883,7 @@ export class SessionManager {
         void this.tickSession(session);
     }
 
-    private disconnectSpectatorFromSession(session: ServerGameSession, participantId: string, source: PlayerLeaveSource): void {
+    private disconnectSpectatorFromSessionLocked(session: ServerGameSession, participantId: string, source: PlayerLeaveSource): void {
         /* spectators are always removed from the session */
         const index = session.spectators.findIndex(spectator => spectator.id === participantId);
         if (index === -1) {
@@ -899,7 +944,7 @@ export class SessionManager {
                     status: "orphaned",
                     timeout: setTimeout(
                         () => {
-                            this.leaveSession(
+                            void this.leaveSession(
                                 participation.session,
                                 participation.participant.id,
                                 "disconnect"
@@ -910,7 +955,7 @@ export class SessionManager {
                 }
             );
         } else {
-            this.leaveSession(
+            void this.leaveSession(
                 participation.session,
                 participation.participant.id,
                 "disconnect"
@@ -1035,63 +1080,77 @@ export class SessionManager {
         return null;
     }
 
-    participantTransferConnection(oldSocketId: string, newSocketId: string): ClientGameParticipation | null {
+    async participantTransferConnection(oldSocketId: string, newSocketId: string): Promise<ClientGameParticipation | null> {
         const info = this.findParticipationFromSocketId(oldSocketId);
         if (!info) {
             return null;
         }
 
-        assert(info.participant.connection.status === "connected");
-        assert(info.participant.connection.socketId === oldSocketId);
-        info.participant.connection.socketId = newSocketId;
+        return await info.session.lock.runExclusive(() => {
+            if (info.participant.connection.status !== "connected" || info.participant.connection.socketId !== oldSocketId) {
+                return null;
+            }
 
-        this.logger.info({
-            event: 'session.connection-transferred',
-            sessionId: info.session.id,
-            participantId: info.participant.id,
-            participantRole: info.role,
-            oldSocketId,
-            newSocketId
-        }, 'Transferred session connection to new socket');
+            info.participant.connection.socketId = newSocketId;
 
-        return {
-            session: this.toSessionInfo(info.session),
-            gameState: this.getPublicGameStatePayload(info.session),
+            this.logger.info(
+                {
+                    event: 'session.connection-transferred',
+                    sessionId: info.session.id,
+                    participantId: info.participant.id,
+                    participantRole: info.role,
+                    oldSocketId,
+                    newSocketId
+                },
+                'Transferred session connection to new socket'
+            );
 
-            participantId: info.participant.id,
-            participantRole: info.role,
-        }
+            return {
+                session: this.toSessionInfo(info.session),
+                gameState: this.getPublicGameStatePayload(info.session),
+
+                participantId: info.participant.id,
+                participantRole: info.role,
+            }
+        });
     }
 
-    participantReclaimSessionFromDeviceId(deviceId: string, socketId: string): ClientGameParticipation | null {
+    async participantReclaimSessionFromDeviceId(deviceId: string, socketId: string): Promise<ClientGameParticipation | null> {
         const info = this.findOrphanedParticipation(deviceId);
         if (!info) {
             return null;
         }
 
-        this.updateParticipantConnection(info.participant, {
-            status: "connected",
-            socketId
-        });
+        return await info.session.lock.runExclusive(() => {
+            if (info.participant.connection.status !== "orphaned") {
+                /* connection already reclaimed */
+                return null;
+            }
 
-        this.logger.info({
-            event: 'session.connection-reclaimed',
-            sessionId: info.session.id,
-            participantId: info.participant.id,
-            participantRole: info.role,
-            deviceId,
-            socketId
-        }, 'Reclaimed orphaned session connection from device id');
+            this.updateParticipantConnection(info.participant, {
+                status: "connected",
+                socketId
+            });
 
-        this.emitSessionUpdated(info.session);
+            this.logger.info({
+                event: 'session.connection-reclaimed',
+                sessionId: info.session.id,
+                participantId: info.participant.id,
+                participantRole: info.role,
+                deviceId,
+                socketId
+            }, 'Reclaimed orphaned session connection from device id');
 
-        return {
-            session: this.toSessionInfo(info.session),
-            gameState: this.getPublicGameStatePayload(info.session),
+            this.emitSessionUpdated(info.session);
 
-            participantId: info.participant.id,
-            participantRole: info.role
-        }
+            return {
+                session: this.toSessionInfo(info.session),
+                gameState: this.getPublicGameStatePayload(info.session),
+
+                participantId: info.participant.id,
+                participantRole: info.role
+            }
+        })
     }
 
     private createSessionId(): string {

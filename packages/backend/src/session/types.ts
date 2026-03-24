@@ -16,6 +16,7 @@ import {
 } from '@ih3t/shared';
 import type { RequestClientInfo } from '../network/clientInfo';
 import type { AccountUserProfile } from '../auth/authRepository';
+import { Mutex } from 'async-mutex';
 
 export type ServerParticipantConnection = ParticipantConnection & ({
     status: 'connected';
@@ -43,10 +44,13 @@ export type ServerSessionParticipation = {
 
 export interface ServerGameSession {
     id: string;
+    lock: Mutex,
+    state: 'lobby' | 'in-game' | 'finished';
+
     players: ServerSessionParticipant[];
     spectators: ServerSessionParticipant[];
+
     gameOptions: LobbyOptions;
-    state: 'lobby' | 'in-game' | 'finished';
     createdAt: number;
     startedAt: number | null;
     gameId: string;
@@ -186,6 +190,8 @@ export function createGameSession(
 ): ServerGameSession {
     return {
         id: sessionId,
+        lock: new Mutex(),
+
         state: 'lobby',
 
         createdAt: Date.now(),

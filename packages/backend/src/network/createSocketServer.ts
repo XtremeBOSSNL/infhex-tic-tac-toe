@@ -98,9 +98,9 @@ export class SocketServerGateway {
             }
         });
 
-        io.on('connection', (socket) => {
+        io.on('connection', async (socket) => {
             try {
-                this.handleConnection(socket);
+                await this.handleConnection(socket);
             } catch (error: unknown) {
                 logSocketActionFailure(this.logger, 'connect', socket, error);
                 socket.emit('error', getSocketErrorMessage(error));
@@ -112,7 +112,7 @@ export class SocketServerGateway {
         this.io = io;
     }
 
-    private handleConnection(socket: ClientSocket) {
+    private async handleConnection(socket: ClientSocket) {
         const clientInfo = parseSocketClientInfo(socket);
 
         this.logger.debug({
@@ -125,7 +125,7 @@ export class SocketServerGateway {
         const connectionId = `${clientInfo.deviceId}:${clientInfo.ephemeralClientId}`;
         if (this.connections.has(connectionId)) {
             const oldConnection = this.connections.get(connectionId)!;
-            const reclaimedParticipation = this.sessionManager.participantTransferConnection(oldConnection.id, socket.id);
+            const reclaimedParticipation = await this.sessionManager.participantTransferConnection(oldConnection.id, socket.id);
             if (reclaimedParticipation) {
                 this.putClientInGameState(socket, reclaimedParticipation)
             }
@@ -136,7 +136,7 @@ export class SocketServerGateway {
 
         /* reclaim a game by the device id */
         {
-            const reclaimedSession = this.sessionManager.participantReclaimSessionFromDeviceId(clientInfo.deviceId ?? "", socket.id);
+            const reclaimedSession = await this.sessionManager.participantReclaimSessionFromDeviceId(clientInfo.deviceId ?? "", socket.id);
             if (reclaimedSession) {
                 this.putClientInGameState(socket, reclaimedSession);
             }
@@ -200,7 +200,7 @@ export class SocketServerGateway {
         });
 
         this.bindSocketHandler(socket, "leave-session", z.any(), async () => {
-            await participationMutex.runExclusive(() => {
+            await participationMutex.runExclusive(async () => {
                 const participation = this.socketParticipations.get(socket.id);
                 if (!participation) {
                     return;
@@ -211,7 +211,7 @@ export class SocketServerGateway {
 
                 const session = this.sessionManager.getSession(participation.sessionId);
                 if (session) {
-                    this.sessionManager.leaveSession(
+                    await this.sessionManager.leaveSession(
                         session,
                         participation.participantId,
                         'leave-session'
@@ -232,27 +232,27 @@ export class SocketServerGateway {
         });
 
         this.bindSocketHandler(socket, "surrender-session", z.any(), async () => {
-            await participationMutex.runExclusive(() => {
+            await participationMutex.runExclusive(async () => {
                 const { sessionId, participantId } = this.requireParticipation(socket.id);
                 const session = this.sessionManager.requireSession(sessionId);
 
-                this.sessionManager.surrenderSession(session, participantId);
+                await this.sessionManager.surrenderSession(session, participantId);
             });
         });
 
         this.bindSocketHandler(socket, "request-rematch", z.any(), async () => {
-            await participationMutex.runExclusive(() => {
+            await participationMutex.runExclusive(async () => {
                 const { sessionId, participantId } = this.requireParticipation(socket.id);
 
                 {
                     const session = this.sessionManager.requireSession(sessionId);
-                    const rematch = this.sessionManager.requestRematch(session, participantId);
+                    const rematch = await this.sessionManager.requestRematch(session, participantId);
                     if (rematch.status !== 'ready') {
                         return;
                     }
                 }
 
-                const { rematchSession, socketMapping } = this.sessionManager.createRematchSession(sessionId);
+                const { rematchSession, socketMapping } = await this.sessionManager.createRematchSession(sessionId);
                 for (const { participant } of this.sessionManager.getAllParticipations(rematchSession)) {
                     const socketId = socketMapping[participant.id];
                     if (!socketId) {
@@ -277,25 +277,25 @@ export class SocketServerGateway {
         });
 
         this.bindSocketHandler(socket, "cancel-rematch", z.any(), async () => {
-            await participationMutex.runExclusive(() => {
+            await participationMutex.runExclusive(async () => {
                 const { sessionId, participantId } = this.requireParticipation(socket.id);
                 const session = this.sessionManager.requireSession(sessionId);
 
-                this.sessionManager.cancelRematch(session, participantId);
+                await this.sessionManager.cancelRematch(session, participantId);
             });
         });
 
         this.bindSocketHandler(socket, "place-cell", zPlaceCellRequest, async request => {
-            await participationMutex.runExclusive(() => {
+            await participationMutex.runExclusive(async () => {
                 const { sessionId, participantId } = this.requireParticipation(socket.id);
                 const session = this.sessionManager.requireSession(sessionId);
 
-                this.sessionManager.placeCell(session, participantId, request.x, request.y);
+                await this.sessionManager.placeCell(session, participantId, request.x, request.y);
             });
         });
 
         this.bindSocketHandler(socket, "send-session-chat-message", zSessionChatMessageRequest, async request => {
-            await participationMutex.runExclusive(() => {
+            await participationMutex.runExclusive(async () => {
                 const { sessionId, participantId } = this.requireParticipation(socket.id);
                 const session = this.sessionManager.requireSession(sessionId);
 
