@@ -56,7 +56,7 @@ function GameHudShell({
             ref={panelRef}
             className={cn(
                 "pointer-events-auto z-20",
-                "w-auto md:w-full md:max-w-sm",
+                "w-auto md:w-full md:max-w-md",
                 "overflow-hidden",
                 "bg-slate-800",
                 "px-4 py-4",

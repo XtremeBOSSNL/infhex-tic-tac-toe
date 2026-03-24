@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import type { LobbyOptions, ShutdownState } from '@ih3t/shared'
+import type { LobbyOptions, PlayerRatingAdjustment, ShutdownState } from '@ih3t/shared'
 import GameHudShell from './GameHudShell'
 import { ShutdownTimer } from './ShutdownTimer'
 import HudInfoBlock from './HudInfoBlock'
 import { formatTimeControl } from '../../utils/gameTimeControl'
 import { NavLink } from 'react-router'
+import React from 'react'
 
 export type HudPlayerInfo = {
   playerId: string,
@@ -20,6 +21,8 @@ interface GameScreenHudProps {
   sessionId: string
   localPlayerId: string | null
   players: HudPlayerInfo[]
+
+  rankingAdjustment: PlayerRatingAdjustment | null,
 
   occupiedCellCount: number
   renderableCellCount: number
@@ -61,6 +64,8 @@ function GameScreenHud({
   players,
   localPlayerId,
 
+  rankingAdjustment,
+
   occupiedCellCount,
   renderableCellCount,
 
@@ -97,15 +102,27 @@ function GameScreenHud({
         </div>
       )}
 
-      <div className="mt-4 grid grid-cols-2 gap-4 text-sm md:grid-cols-1">
-        <HudInfoBlock label="Game">
-          <div className="text-white">{gameOptions.rated ? 'Rated Game' : 'Casual Game'}</div>
+      <div className="mt-4 grid grid-cols-2 gap-4 text-sm">
+        <HudInfoBlock label="Session">
+          <div className="text-white">{gameOptions.visibility === 'private' ? 'Private Session' : 'Public Session'}</div>
           <div className="text-slate-300">Clock {formatTimeControl(gameOptions.timeControl)}</div>
         </HudInfoBlock>
 
-        <HudInfoBlock label="Cells">
-          <div className="text-white">{renderableCellCount} active</div>
-          <div className="text-slate-300">{occupiedCellCount} occupied</div>
+        <HudInfoBlock label="Ranking">
+          {gameOptions.rated ? (
+            <React.Fragment>
+              <div className="text-white">
+                <span className={"inline-block w-[2em]"}>Win</span>
+                <span className={"inline-block w-[2em] text-right"}>+{rankingAdjustment?.eloGain ?? 0}</span>
+              </div>
+              <div className="text-slate-300">
+                <span className={"inline-block w-[2em]"}>Loss</span>
+                <span className={"inline-block w-[2em] text-right"}>{rankingAdjustment?.eloLoss ?? 0}</span>
+              </div>
+            </React.Fragment>
+          ) : (
+            <div className="text-white">Not Rated</div>
+          )}
         </HudInfoBlock>
 
         <HudInfoBlock label="Players">
@@ -116,11 +133,17 @@ function GameScreenHud({
                 style={{ backgroundColor: displayColor }}
               />
               {profileId ? (
-                <NavLink to={`/profile/${profileId}`}>
+                <NavLink
+                  to={`/profile/${profileId}`}
+                  className={"overflow-hidden overscroll-contain text-ellipsis min-w-0"}
+                  title={displayName}
+                >
                   {displayName}
                 </NavLink>
               ) : (
-                <span>{displayName}</span>
+                <span title={displayName} className={"overflow-hidden overscroll-contain text-ellipsis min-w-0"}                >
+                  {displayName}
+                </span>
               )}
 
               {!isConnected && (
@@ -139,6 +162,11 @@ function GameScreenHud({
               )}
             </div>
           ))}
+        </HudInfoBlock>
+
+        <HudInfoBlock label="Cells">
+          <div className="text-white">{renderableCellCount} active</div>
+          <div className="text-slate-300">{occupiedCellCount} occupied</div>
         </HudInfoBlock>
       </div>
 

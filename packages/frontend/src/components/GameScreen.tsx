@@ -98,6 +98,7 @@ function GameScreen({
         previousCellCountRef.current = gameState.cells.length
     }, [gameState.cells.length, interactionEnabled])
 
+    const rankingAdjustment = players.find(player => player.id === currentPlayerId)?.ratingAdjustment ?? null;
     return (
         <div className="relative w-full h-full overflow-hidden bg-slate-950 text-white">
             <GameBoardCanvas
@@ -146,6 +147,7 @@ function GameScreen({
 
                         players={hudPlayerInfo}
                         localPlayerId={currentPlayerId}
+                        rankingAdjustment={rankingAdjustment}
 
                         occupiedCellCount={gameState.cells.length}
                         renderableCellCount={renderableCellCount}
