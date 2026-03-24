@@ -66,7 +66,9 @@ function GameScreen({
             displayName: player.displayName,
             displayColor: getPlayerTileColor(gameState.playerTiles, player.id),
 
-            isConnected: player.connection.status === "connected"
+            rankingEloScore: player.rating.eloScore,
+
+            isConnected: player.connection.status === "connected",
         }));
     }, [gameState.playerTiles, players])
 
