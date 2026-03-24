@@ -267,7 +267,6 @@ function useGameBoard({
     const animationFrameRef = useRef<number | null>(null)
     const hoveredCellRef = useRef<ReturnType<typeof pixelToAxial> | null>(null)
     const lineHighlightsRef = useRef<HexCell[][]>([])
-    const [, setLineHighlightCount] = useState(0)
 
     const latestDataRef = useRef<{
         boardState: BoardState
@@ -562,7 +561,7 @@ function useGameBoard({
 
     const startRightPointerInteraction = (clientX: number, clientY: number) => {
         const targetCell = screenToCell(clientX, clientY)
-        if (!targetCell) {
+        if (!targetCell || !renderableCells.get(getCellKey(targetCell.x, targetCell.y))) {
             return false
         }
 
@@ -580,34 +579,36 @@ function useGameBoard({
     }
 
     const extendLineHighlightAtClientPoint = (clientX: number, clientY: number) => {
-        const lineDragState = rightPointerStateRef.current
+        const rightPointerState = rightPointerStateRef.current
         const targetCell = screenToCell(clientX, clientY)
-        if (!lineDragState || !targetCell) {
+        if (!rightPointerState || !targetCell) {
             return
         }
 
-        const deltaX = clientX - lineDragState.startX
-        const deltaY = clientY - lineDragState.startY
+        const deltaX = clientX - rightPointerState.startX
+        const deltaY = clientY - rightPointerState.startY
         const movedEnough = Math.abs(deltaX) > DRAG_THRESHOLD_PX
             || Math.abs(deltaY) > DRAG_THRESHOLD_PX
-            || !sameCell(lineDragState.startCell, targetCell)
+            || !sameCell(rightPointerState.startCell, targetCell)
 
-        if (!lineDragState.drawing) {
+        if (!rightPointerState.drawing) {
             if (!movedEnough) {
                 return
             }
 
-            lineDragState.drawing = true
-            lineDragState.cells = [lineDragState.startCell]
+            rightPointerState.drawing = true
+            rightPointerState.cells = [rightPointerState.startCell]
         }
 
-        const nextLine = buildStraightHexLine(lineDragState.startCell, targetCell)
+        const nextLine = buildStraightHexLine(rightPointerState.startCell, targetCell)
+            .filter(cell => renderableCells.has(getCellKey(cell.x, cell.y)))
+
         const lastCell = nextLine[nextLine.length - 1]
-        if (!lastCell || sameCell(lastCell, lineDragState.cells[lineDragState.cells.length - 1] ?? null)) {
+        if (!lastCell || sameCell(lastCell, rightPointerState.cells[rightPointerState.cells.length - 1] ?? null)) {
             return
         }
 
-        lineDragState.cells = nextLine
+        rightPointerState.cells = nextLine
         scheduleDraw()
     }
 
@@ -622,23 +623,6 @@ function useGameBoard({
         return -1
     }
 
-    const syncLineHighlightCount = () => {
-        setLineHighlightCount(lineHighlightsRef.current.length)
-    }
-
-    const toggleSingleCellHighlight = (targetCell: HexCell) => {
-        const singleCellHighlightIndex = lineHighlightsRef.current.findIndex((cells) =>
-            cells.length === 1 && sameCell(cells[0] ?? null, targetCell)
-        )
-
-        if (singleCellHighlightIndex >= 0) {
-            lineHighlightsRef.current = lineHighlightsRef.current.filter((_, currentIndex) => currentIndex !== singleCellHighlightIndex)
-            return
-        }
-
-        lineHighlightsRef.current = [...lineHighlightsRef.current, [targetCell]]
-    }
-
     const finishRightPointerInteraction = (clientX: number, clientY: number) => {
         const lineDragState = rightPointerStateRef.current
         rightPointerStateRef.current = null
@@ -650,23 +634,25 @@ function useGameBoard({
         const targetCell = screenToCell(clientX, clientY) ?? lineDragState.startCell
 
         if (!lineDragState.drawing) {
+            /* we clicked a single cell */
             const lineIndex = getLineIndexAtCell(targetCell)
             if (lineIndex >= 0) {
-                lineHighlightsRef.current = lineHighlightsRef.current.filter((_, currentIndex) => currentIndex !== lineIndex)
+                /* remove the line */
+                lineHighlightsRef.current.splice(lineIndex, 1);
             } else {
-                toggleSingleCellHighlight(targetCell)
+                /* higlight the cell */
+                lineHighlightsRef.current = [...lineHighlightsRef.current, [targetCell]]
             }
-            syncLineHighlightCount()
-            scheduleDraw()
-            return
+        } else {
+            /* finalize the line itself */
+            lineDragState.cells = buildStraightHexLine(lineDragState.startCell, targetCell)
+                .filter(cell => renderableCells.has(getCellKey(cell.x, cell.y)))
+
+            if (lineDragState.cells.length >= 2) {
+                lineHighlightsRef.current = [...lineHighlightsRef.current, lineDragState.cells]
+            }
         }
 
-        lineDragState.cells = buildStraightHexLine(lineDragState.startCell, targetCell)
-
-        if (lineDragState.cells.length >= 2) {
-            lineHighlightsRef.current = [...lineHighlightsRef.current, lineDragState.cells]
-        }
-        syncLineHighlightCount()
         scheduleDraw()
     }
 
