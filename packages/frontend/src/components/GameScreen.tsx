@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { useEffect, useMemo, useRef } from 'react'
 import type { GameState, LobbyOptions, SessionChat, SessionParticipant, SessionParticipantRole, ShutdownState } from '@ih3t/shared'
 import { playTilePlacedSound } from '../soundEffects'
-import { getPlayerLabel, getPlayerTileColor } from '../utils/gameBoard'
+import { getPlayerTileColor } from '../utils/gameBoard'
 import GameBoardCanvas from './game-screen/GameBoardCanvas'
 import GameScreenHud, { HudPlayerInfo } from './game-screen/GameScreenHud'
 import GameChatBox from './game-screen/GameChatBox'
@@ -54,20 +54,18 @@ function GameScreen({
   onSendChatMessage,
 }: Readonly<GameScreenProps>) {
   const previousCellCountRef = useRef(gameState.cells.length)
-
-  const playerIds = players.map(player => player.id)
-  const playerNames = Object.fromEntries(players.map(player => [player.id, player.displayName]))
   const isSpectator = participantRole === 'spectator'
   const isOwnTurn = Boolean(currentPlayerId) && gameState.currentTurnPlayerId === currentPlayerId
   const canPlaceCell = interactionEnabled && !isSpectator && isOwnTurn
 
   const hudPlayerInfo = useMemo(() => {
-    return playerIds.map(playerId => ({
-      playerId,
-      displayName: getPlayerLabel(playerIds, playerId, playerNames),
-      displayColor: getPlayerTileColor(gameState.playerTiles, playerId)
-    } satisfies HudPlayerInfo))
-  }, [gameState.playerTiles, playerIds, playerNames])
+    return players.map<HudPlayerInfo>(player => ({
+      playerId: player.id,
+      displayName: player.displayName,
+      displayColor: getPlayerTileColor(gameState.playerTiles, player.id),
+      isConnected: player.connection.status === "connected"
+    }));
+  }, [gameState.playerTiles, players])
 
   useEffect(() => {
     previousCellCountRef.current = gameState.cells.length

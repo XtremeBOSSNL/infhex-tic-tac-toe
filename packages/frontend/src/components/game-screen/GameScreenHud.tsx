@@ -9,6 +9,7 @@ export type HudPlayerInfo = {
   playerId: string,
   displayColor: string,
   displayName: string,
+  isConnected: boolean,
 }
 
 interface GameScreenHudProps {
@@ -34,6 +35,18 @@ function MenuIcon() {
       <path d="M5 8h14" />
       <path d="M5 12h14" />
       <path d="M5 16h14" />
+    </svg>
+  )
+}
+
+function OfflineIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 8.5a16 16 0 0 1 20 0" />
+      <path d="M5 12.5a11.5 11.5 0 0 1 14 0" />
+      <path d="M8.5 16a6.5 6.5 0 0 1 7 0" />
+      <path d="M12 19.5h.01" />
+      <path d="M3 3 21 21" />
     </svg>
   )
 }
@@ -92,13 +105,22 @@ function GameScreenHud({
         </HudInfoBlock>
 
         <HudInfoBlock label="Players">
-          {players.map(({ playerId, displayColor, displayName }) => (
+          {players.map(({ playerId, displayColor, displayName, isConnected }) => (
             <div key={playerId} className="mt-1 flex items-center gap-2.5 text-white">
               <span
                 className="h-3.5 w-3.5 rounded-full border border-white/20 flex-shrink-0"
                 style={{ backgroundColor: displayColor }}
               />
               <span>{displayName}</span>
+              {!isConnected && (
+                <span
+                  title={`${displayName} is offline`}
+                  aria-label={`${displayName} is offline`}
+                  className="flex h-5 w-5 items-center justify-center rounded-full border border-amber-300/25 bg-amber-400/10 text-amber-100"
+                >
+                  <OfflineIcon />
+                </span>
+              )}
               {playerId === localPlayerId && (
                 <span className="rounded-md border border-white/10 bg-white/6 px-2 whitespace-nowrap text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
                   You
