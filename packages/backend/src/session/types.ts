@@ -51,6 +51,7 @@ export interface ServerGameSession {
     lock: Mutex,
     state: 'lobby' | 'in-game' | 'finished';
 
+    hadPlayers: boolean,
     players: ServerSessionParticipant[];
     spectators: ServerSessionParticipant[];
 
@@ -191,6 +192,7 @@ export function createGameSession(
         createdAt: Date.now(),
         startedAt: null,
 
+        hadPlayers: false,
         players: [],
         spectators: [],
 

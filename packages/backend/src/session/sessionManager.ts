@@ -270,6 +270,7 @@ export class SessionManager {
 
                     connection: { status: "disconnected", timestamp: Date.now() },
                 });
+                session.hadPlayers = true;
                 break;
 
             case 'in-game':
@@ -481,6 +482,7 @@ export class SessionManager {
 
             const socketMapping: Record<string, string> = {};
             await rematchSession.lock.runExclusive(async () => {
+                rematchSession.hadPlayers = true;
                 rematchSession.players = originalSession.players.map(player => {
                     const newParticipantId = this.createParticipantId(rematchSession);
                     participantMapping[player.id] = newParticipantId;
@@ -670,7 +672,7 @@ export class SessionManager {
         const connectedPlayers = session.players.filter(spectator => spectator.connection.status !== "disconnected");
         const connectedSpectators = session.spectators.filter(spectator => spectator.connection.status !== "disconnected");
         const sessionAge = Date.now() - session.createdAt;
-        if (connectedPlayers.length === 0 && connectedSpectators.length === 0 && sessionAge >= 5_000) {
+        if (connectedPlayers.length === 0 && connectedSpectators.length === 0 && (session.hadPlayers || sessionAge >= 5_000)) {
             this.deleteSession(session, "empty");
             return;
         }
