@@ -1,6 +1,5 @@
-import { useEffect } from 'react'
 import { CHANGELOG_DAYS, type CreateSessionRequest } from '@ih3t/shared'
-import { useNavigate, useSearchParams } from 'react-router'
+import { useNavigate } from 'react-router'
 import { toast } from 'react-toastify'
 import LobbyScreen from '../components/LobbyScreen'
 import { joinSession } from '../liveGameClient'
@@ -12,12 +11,9 @@ import { useQueryAvailableSessions } from '../query/sessionClient'
 import { buildFinishedGamesPath, buildSessionPath } from './archiveRouteState'
 import { useQueryServerShutdown } from '../query/serverClient'
 import PageMetadata, { DEFAULT_PAGE_TITLE } from '../components/PageMetadata'
-import { describeLobbyInvite } from '../utils/routeMetadata'
 
 function LobbyRoute() {
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
-  const inviteSessionId = searchParams.get('join')
   const connection = useLiveGameStore(state => state.connection)
     const shutdown = useQueryServerShutdown().data ?? null;
     const accountQuery = useQueryAccount({ enabled: true })
@@ -28,17 +24,6 @@ function LobbyRoute() {
     const unreadChangelogEntries = accountQuery.data?.user && accountPreferencesQuery.data?.preferences
         ? countUnreadChangelogEntries(CHANGELOG_DAYS, accountPreferencesQuery.data.preferences.changelogReadAt)
         : 0
-  const inviteSession = inviteSessionId
-    ? (availableSessionsQuery.data ?? []).find((session) => session.id === inviteSessionId) ?? null
-    : null
-
-    useEffect(() => {
-        if (!inviteSessionId) {
-            return
-        }
-
-        void navigate(buildSessionPath(inviteSessionId), { replace: true })
-    }, [inviteSessionId, navigate])
 
     const createLobby = (request: CreateSessionRequest) => {
         void (async () => {
@@ -67,10 +52,8 @@ function LobbyRoute() {
     return (
         <>
             <PageMetadata
-                {...(inviteSessionId ? describeLobbyInvite(inviteSession) : {
-                    title: DEFAULT_PAGE_TITLE,
-                    description: 'Play Infinity Hexagonal Tic-Tac-Toe online, host a lobby, join live matches, and review finished games move by move.'
-                })}
+                title={DEFAULT_PAGE_TITLE}
+                description='Play Infinity Hexagonal Tic-Tac-Toe online, host a lobby, join live matches, and review finished games move by move.'
             />
             <LobbyScreen
                 isConnected={connection.isConnected}

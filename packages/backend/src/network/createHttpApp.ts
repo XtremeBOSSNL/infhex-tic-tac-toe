@@ -91,6 +91,12 @@ export class HttpApplication {
         if (existsSync(this.frontendDistPath)) {
             app.use(express.static(this.frontendDistPath, { index: false }));
             app.get(/^(?!\/api(?:\/|$)|\/socket\.io(?:\/|$)).*/, async (req, res) => {
+                const joinRedirectUrl = this.resolveJoinRedirectUrl(req);
+                if (joinRedirectUrl) {
+                    res.redirect(302, joinRedirectUrl);
+                    return;
+                }
+
                 const archiveRedirectUrl = this.resolveArchiveRedirectUrl(req);
                 if (archiveRedirectUrl) {
                     res.redirect(302, archiveRedirectUrl);
@@ -103,6 +109,21 @@ export class HttpApplication {
         }
 
         this.app = app;
+    }
+
+    private resolveJoinRedirectUrl(req: express.Request): string | null {
+        if (req.path !== '/') {
+            return null;
+        }
+
+        const origin = `${req.protocol}://${req.get('host')}`;
+        const url = new URL(req.originalUrl || req.url, origin);
+        const sessionId = String(url.searchParams.get('join') ?? '').trim();
+        if (!sessionId) {
+            return null;
+        }
+
+        return `/session/${encodeURIComponent(sessionId)}`;
     }
 
     private resolveArchiveRedirectUrl(req: express.Request): string | null {
