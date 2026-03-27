@@ -16,7 +16,7 @@ export function getBaseUrl() {
   return 'http://localhost:3001'
 }
 
-export interface SsrPageMetadata {
+export interface PageMetadataProps {
   title: string;
   description: string;
   url: string;
@@ -27,8 +27,8 @@ export interface SsrPageMetadata {
 
 function buildPageMetadata(
   currentUrl: string,
-  overrides: Partial<SsrPageMetadata> = {}
-): SsrPageMetadata {
+  overrides: Partial<PageMetadataProps> = {}
+): PageMetadataProps {
   return {
     title: overrides.title ?? DEFAULT_PAGE_TITLE,
     description: overrides.description ?? DEFAULT_PAGE_DESCRIPTION,
@@ -39,7 +39,7 @@ function buildPageMetadata(
   }
 }
 
-function PageMetadata(overrides: Readonly<Partial<SsrPageMetadata>>) {
+function PageMetadata(overrides: Readonly<Partial<PageMetadataProps>>) {
   const location = useLocation();
   const metadata = buildPageMetadata(`${getBaseUrl()}${location.pathname}${location.search}${location.hash}`, overrides)
 

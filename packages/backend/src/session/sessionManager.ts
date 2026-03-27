@@ -977,6 +977,14 @@ export class SessionManager {
     }
 
     private emitLobbyUpdated(session: ServerGameSession): void {
+        if (session.state === "lobby" && session.gameOptions.visibility === "private") {
+            /* Private lobbies do not get announce while in lobby mode. Only once they enter "in game" state. */
+            return
+        } else if (session.state === "finished") {
+            /* Finished sessions are not announced */
+            return
+        }
+
         const lobbyInfo = this.toLobbyInfo(session);
         this.eventHandlers.lobbyUpdated?.(lobbyInfo);
     }
