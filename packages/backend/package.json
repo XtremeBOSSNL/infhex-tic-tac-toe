@@ -29,6 +29,7 @@
         "zod": "^4.3.6"
     },
     "devDependencies": {
+        "@ih3t/build-utils": "workspace:*",
         "@types/express": "^5.0.6",
         "@types/node": "^25.5.0",
         "pino-pretty": "^13.1.3",

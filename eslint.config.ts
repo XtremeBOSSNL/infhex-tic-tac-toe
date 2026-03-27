@@ -18,6 +18,7 @@ export default defineConfig([
             `**/.cache/**`,
             `**/*.spec.ts`,
             `**/*.spec.tsx`,
+            `packages/shared/src/generatedChangelog.ts`,
         ],
     },
     {

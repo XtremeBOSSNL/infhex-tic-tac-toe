@@ -1,6 +1,4 @@
-import { BotEngineCapabilities, BotEngineInterface, BotEngineSuggestionResult, GameState, HexCoordinate } from "@ih3t/shared";
-
-import { BotWorkerRequest, BotWorkerResponse } from "../../../shared/src/botWorkerProtocol";
+import { BotEngineCapabilities, BotEngineInterface, BotEngineSuggestionResult, BotWorkerRequest, BotWorkerResponse, GameState, HexCoordinate } from "@ih3t/shared";
 
 type PendingRequest = {
     resolve: (response: BotWorkerResponse) => void

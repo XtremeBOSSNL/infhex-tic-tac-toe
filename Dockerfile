@@ -11,7 +11,7 @@ RUN corepack enable
 
 WORKDIR /app
 
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.json tsconfig.node.json eslint.config.js ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.json tsconfig.node.json eslint.config.ts ./
 
 # COPY --parents packages/*/package.json .
 COPY packages/shared/package.json packages/shared/package.json
@@ -40,7 +40,7 @@ RUN corepack enable
 
 WORKDIR /app
 
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.json tsconfig.node.json eslint.config.js ./
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.json tsconfig.node.json eslint.config.ts ./
 COPY packages/backend/package.json packages/backend/package.json
 
 COPY --from=build /app/packages/backend/dist/ ./packages/backend/dist/

@@ -15,39 +15,39 @@ const visibilityOptions: {
     title: string
     description: string
 }[] = [
-        {
-            value: `public`,
-            title: `Public Lobby`,
-            description: `Listed in the live browser.`,
-        },
-        {
-            value: `private`,
-            title: `Private Lobby`,
-            description: `Hidden until shared directly.`,
-        },
-    ];
+    {
+        value: `public`,
+        title: `Public Lobby`,
+        description: `Listed in the live browser.`,
+    },
+    {
+        value: `private`,
+        title: `Private Lobby`,
+        description: `Hidden until shared directly.`,
+    },
+];
 
 const timeControlModeOptions: {
     value: GameTimeControl[`mode`]
     title: string
     description: string
 }[] = [
-        {
-            value: `match`,
-            title: `Match Based`,
-            description: `A main clock between 1m and 60m plus an increment after each completed turn.`,
-        },
-        {
-            value: `turn`,
-            title: `Turn Based`,
-            description: `A time limit per turn between 5s and 120s.`,
-        },
-        {
-            value: `unlimited`,
-            title: `Unlimited`,
-            description: `No clock configured.`,
-        },
-    ];
+    {
+        value: `match`,
+        title: `Match Based`,
+        description: `A main clock between 1m and 60m plus an increment after each completed turn.`,
+    },
+    {
+        value: `turn`,
+        title: `Turn Based`,
+        description: `A time limit per turn between 5s and 120s.`,
+    },
+    {
+        value: `unlimited`,
+        title: `Unlimited`,
+        description: `No clock configured.`,
+    },
+];
 
 const TURN_TIME_STEP_SECONDS = [
     5, 10, 15, 20, 30, 45, 60, 90, 120,
@@ -75,7 +75,7 @@ function SelectableOptions({ onClick, selected, title, description, disabled = f
                 : disabled
                     ? `cursor-not-allowed border-white/8 bg-white/4 opacity-60`
                     : `border-white/10 bg-white/6 hover:border-white/20 hover:bg-white/10`
-                }`}
+            }`}
         >
             <div className="flex-row items-center text-sm font-bold text-white">
                 <span className={`mr-2 inline-block h-3.5 w-3.5 align-sub rounded-full border ${selected ? `border-sky-200 bg-sky-300` : `border-white/20 bg-slate-900/40`}`} />

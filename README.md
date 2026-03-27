@@ -4,7 +4,7 @@ Small monorepo for a real-time 2-player abstract strategy game inspired by the f
 https://www.youtube.com/watch?v=Ob6QINTMIOA
 
 Official website:
-https://hex-tic-tac-toe.did.science/
+https://hexo.did.science/
 
 ## Game
 

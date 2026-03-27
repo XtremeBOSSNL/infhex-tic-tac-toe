@@ -1,0 +1,13 @@
+{
+    "name": "@ih3t/build-utils",
+    "version": "0.0.0",
+    "private": true,
+    "type": "module",
+    "dependencies": {},
+    "exports": {
+        ".": {
+            "types": "./src/index.ts",
+            "import": "./src/index.ts"
+        }
+    }
+}

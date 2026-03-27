@@ -12,7 +12,6 @@
         "build-dev:client": "vite build -m development --outDir dist/client",
         "build-dev:server": "vite build -m development --ssr src/entry-server.tsx --outDir dist/ssr",
         "type-check": "tsc --noEmit",
-        "lint": "eslint .",
         "preview": "vite preview",
         "clean": "rm -rf dist",
         "test-ct": "playwright test"
@@ -35,6 +34,7 @@
     },
     "devDependencies": {
         "@eslint/js": "^9.39.4",
+        "@ih3t/build-utils": "workspace:*",
         "@playwright/experimental-ct-react": "^1.58.2",
         "@rolldown/plugin-babel": "^0.2.2",
         "@tailwindcss/vite": "^4.2.2",

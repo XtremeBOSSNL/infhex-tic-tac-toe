@@ -1,9 +1,8 @@
+import { resolveVersionHash } from '@ih3t/build-utils';
 import babel from '@rolldown/plugin-babel';
 import tailwindcss from '@tailwindcss/vite';
 import react, { reactCompilerPreset } from '@vitejs/plugin-react';
 import { defineConfig, UserConfig } from 'vite';
-
-import { resolveVersionHash } from '../../build/resolveVersionHash';
 
 export default defineConfig(({ isSsrBuild, mode }) => ({
     assetsInclude: [`**/*.aac`],
