@@ -208,7 +208,7 @@ function LiveGameSection({
                         <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${liveGame.rated
                             ? `bg-amber-300/15 text-amber-100`
                             : `bg-white/8 text-slate-200`
-                        }`}
+                            }`}
                         >
                             {liveGame.rated ? `Rated` : `Casual`}
                         </span>
@@ -359,7 +359,7 @@ function RecentGamesSection({
                                                 <span className={`rounded-full px-2.5 py-0.5 ${profileEloChange >= 0
                                                     ? `bg-emerald-400/12 text-emerald-200`
                                                     : `bg-rose-400/12 text-rose-200`
-                                                }`}
+                                                    }`}
                                                 >
                                                     {`ELO `}
                                                     {` `}
@@ -369,6 +369,7 @@ function RecentGamesSection({
 
                                             <span className="rounded-full bg-slate-900/60 px-2.5 py-0.5">
                                                 Moves:
+                                                {` `}
                                                 {game.moveCount}
                                             </span>
 

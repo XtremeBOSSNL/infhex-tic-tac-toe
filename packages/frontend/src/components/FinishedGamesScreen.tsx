@@ -205,7 +205,7 @@ function FinishedGamesScreen({
                                                         </span>
 
                                                         <span className="rounded-full bg-slate-900/60 px-2.5 py-0.5">
-                                                            Moves:
+                                                            {`Moves: `}
                                                             {game.moveCount}
                                                         </span>
 
