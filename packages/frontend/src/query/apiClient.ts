@@ -2,6 +2,16 @@ import { getOrCreateDeviceId } from '../deviceId'
 
 let cachedDeviceId: string | null = null
 
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    message: string
+  ) {
+    super(message)
+    this.name = 'ApiError'
+  }
+}
+
 export function getApiBaseUrl() {
   const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL
   if (configuredBaseUrl) {
@@ -41,8 +51,20 @@ export async function fetchJson<T>(path: string, init?: RequestInit): Promise<T>
 
   if (!response.ok) {
     const data = await response.json().catch(() => null)
-    throw new Error(data?.error ?? `Request failed: ${response.status}`)
+    throw new ApiError(response.status, data?.error ?? `Request failed: ${response.status}`)
   }
 
   return await response.json() as T
+}
+
+export async function fetchOptionalJson<T>(path: string, init?: RequestInit): Promise<T | null> {
+  try {
+    return await fetchJson<T>(path, init)
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) {
+      return null
+    }
+
+    throw error
+  }
 }

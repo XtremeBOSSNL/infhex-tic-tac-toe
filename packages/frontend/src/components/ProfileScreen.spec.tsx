@@ -162,6 +162,7 @@ const liveGame: LobbyInfo = {
     incrementMs: 5_000,
   },
   rated: true,
+  createdAt: renderTimestamp - (12 * 60 * 1000),
   startedAt: renderTimestamp - (8 * 60 * 1000),
 }
 

@@ -133,8 +133,14 @@ export class FrontendSsrRenderer {
     ): Promise<void> {
         const path = requestUrl.pathname
 
-        if (path === '/' || path.startsWith('/admin') || path === '/account/profile' || path.startsWith("/profile/") || path.startsWith('/session/')) {
+        if (path === '/' || path.startsWith('/admin') || path === '/account/profile' || path.startsWith("/profile/")) {
             queryClient.setQueryData(queryKeys.availableSessions, sortLobbySessions(this.dependencies.apiQueryService.listSessions()))
+        }
+
+        const sessionMatch = path.match(/^\/session\/([^/]+)$/)
+        if (sessionMatch) {
+            const sessionId = decodeURIComponent(sessionMatch[1])
+            queryClient.setQueryData(queryKeys.session(sessionId), this.dependencies.apiQueryService.getSession(sessionId))
         }
 
         if (path === '/leaderboard') {

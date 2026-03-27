@@ -1,6 +1,7 @@
 import type {
     ClientToServerEvents,
     LobbyInfo,
+    SessionInfo,
     ServerToClientEvents
 } from '@ih3t/shared'
 import { io, type Socket } from 'socket.io-client'
@@ -216,14 +217,28 @@ export function startLiveGameClient() {
     })
 
     socket.on('session-joined', data => {
+        queryClient.setQueryData(
+            queryKeys.session(data.session.id),
+            data.session
+        )
         useLiveGameStore.getState().setupSession(data)
         navigateToSession(data.session.id)
         executeHeartbeat()
     })
 
-    socket.on('session-updated',
-        data => useLiveGameStore.getState().handleSessionUpdate({ ...data.session, id: data.sessionId })
-    )
+    socket.on('session-updated', data => {
+        queryClient.setQueryData(
+            queryKeys.session(data.sessionId),
+            (currentSession: SessionInfo | null | undefined) => currentSession
+                ? {
+                    ...currentSession,
+                    ...data.session,
+                    id: data.sessionId
+                }
+                : currentSession ?? null
+        )
+        useLiveGameStore.getState().handleSessionUpdate({ ...data.session, id: data.sessionId })
+    })
 
     socket.on('game-state', data => useLiveGameStore.getState().handleGameState(data))
     socket.on('game-cell-place', data => useLiveGameStore.getState().handleGameCellPlace(data))

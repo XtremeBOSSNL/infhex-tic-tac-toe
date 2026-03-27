@@ -184,6 +184,16 @@ export class ApiRouter {
             res.json(response);
         });
 
+        router.get('/session/:sessionId', (req, res) => {
+            const session = this.apiQueryService.getSession(String(req.params.sessionId ?? '').trim());
+            if (!session) {
+                res.status(404).json({ error: 'Session not found.' });
+                return;
+            }
+
+            res.json(session);
+        });
+
         router.get('/sessions', (_req, res) => {
             res.json(this.apiQueryService.listSessions());
         });

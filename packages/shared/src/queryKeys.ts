@@ -12,6 +12,7 @@ export const queryKeys = {
     adminStats: (timezoneOffsetMinutes: number) => ['admin', 'stats', timezoneOffsetMinutes] as const,
 
     leaderboard: ['leaderboard'] as const,
+    session: (sessionId: string | null) => ['session', sessionId ?? 'unknown'] as const,
     availableSessions: ['sessions', 'available'] as const,
     sandboxPosition: (positionId: string | null) => ['sandbox-position', positionId ?? "none"] as const,
 

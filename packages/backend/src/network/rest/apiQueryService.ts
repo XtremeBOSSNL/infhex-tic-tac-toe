@@ -8,6 +8,7 @@ import type {
     FinishedGamesPage,
     Leaderboard,
     LobbyInfo,
+    SessionInfo,
     ProfileGamesResponse,
     ProfileResponse,
     ProfileStatisticsResponse,
@@ -103,6 +104,10 @@ export class ApiQueryService {
             pageSize: 10,
             playerProfileId: user.id
         });
+    }
+
+    getSession(sessionId: string): SessionInfo | null {
+        return this.sessionManager.getSessionInfo(sessionId);
     }
 
     listSessions(): LobbyInfo[] {

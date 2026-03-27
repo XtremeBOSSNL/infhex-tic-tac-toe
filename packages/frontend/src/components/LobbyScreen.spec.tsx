@@ -37,6 +37,7 @@ const openLobby: LobbyInfo = {
     turnTimeMs: 45_000,
   },
   rated: false,
+  createdAt: fixedTimestamp - 15_000,
   startedAt: null,
 }
 
@@ -55,6 +56,7 @@ const ratedLobby: LobbyInfo = {
     incrementMs: 5_000,
   },
   rated: true,
+  createdAt: fixedTimestamp - 30_000,
   startedAt: null,
 }
 
@@ -76,6 +78,7 @@ const activeLobby: LobbyInfo = {
     mode: 'unlimited',
   },
   rated: false,
+  createdAt: fixedTimestamp - (10 * 60_000),
   startedAt: fixedTimestamp - 65_000,
 }
 
@@ -94,6 +97,7 @@ const ownRatedLobby: LobbyInfo = {
     incrementMs: 10_000,
   },
   rated: true,
+  createdAt: fixedTimestamp - 45_000,
   startedAt: null,
 }
 

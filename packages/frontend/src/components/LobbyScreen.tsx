@@ -1,5 +1,5 @@
 import type { AccountProfile, CreateSessionRequest, LobbyInfo, ShutdownState } from '@ih3t/shared'
-import { useEffect, useState, type CSSProperties } from 'react'
+import { useEffect, useState } from 'react'
 import CreateLobbyDialog from './CreateLobbyDialog'
 import { useSsrCompatibleNow } from '../ssrState'
 import ScreenFooter from './ScreenFooter'
